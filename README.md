@@ -1,0 +1,109 @@
+# Homework Copilot — BIGBERLINHACK 2026
+
+iPhone/iPad app that fills out, corrects, completes, annotates, or replaces handwriting on
+your worksheets — **in your own handwriting** — plus voice-chat and explainer videos.
+
+Built for the **Hera** track. Partner techs: **Google DeepMind (Gemini), Gradium, Tavily**.
+
+## Architecture
+
+```
+Swift app (iOS/iPadOS 26+, Liquid Glass)
+  ├─► Supabase Swift SDK (auth, postgres, storage)
+  └─► Supabase Edge Functions (AI orchestration)
+        ├─► Gemini      — joint reasoning over all input images, per-image standalone prompts
+        ├─► gpt-image-2 — sequential edits with handwriting sample (or adaptive)
+        ├─► Tavily      — live web research (used as a chat tool)
+        └─► Hera        — explainer video generation
+
+Gradium realtime voice  ◀── direct WebSocket from app, ephemeral token brokered by edge function
+```
+
+## Actions
+
+| action | input | what happens |
+|---|---|---|
+| correct | worksheet with mistakes | strikes through / overwrites errors with corrections in user's handwriting |
+| complete | partially filled | fills the unfinished parts in user's handwriting |
+| fill_out | empty worksheet | writes all answers in user's handwriting |
+| annotate | any worksheet | adds margin notes, underlines, hints in user's handwriting |
+| schrift_replace | any worksheet | rewrites the existing handwriting in user's chosen style — content unchanged |
+
+All five run through the same pipeline — only the Gemini system prompt differs per action.
+
+## Critical: standalone prompt discipline
+
+Gemini sees **all** uploaded images jointly so it can resolve cross-image context. But each
+generated prompt is sent to gpt-image-2 with **only its single image** — no other images,
+no chat memory.
+
+So every Gemini-output prompt MUST be self-contained:
+- ❌ "fill in the result from question 3 of image 1"
+- ✅ "fill in the value 42 in the marked field"
+
+This is enforced via the system prompt at `supabase/functions/_shared/prompts.ts`.
+
+## Setup
+
+### Prereqs
+
+- macOS with Xcode 26+
+- Supabase CLI (`brew install supabase/tap/supabase`)
+- Already done: schema + edge functions + secrets are deployed to project
+  `dlofswfjvntgqakmorvl`. If you re-deploy: `supabase functions deploy <name>`.
+
+### Swift app
+
+1. Clone the repo and `cd` in.
+2. Copy `ios/BIGBERLINHACK/Sources/Configuration.example.swift` to
+   `ios/BIGBERLINHACK/Sources/Configuration.swift` and fill in the supabase URL + anon key.
+   `Configuration.swift` is gitignored.
+3. Open Xcode 26 → File → New → Project → iOS App.
+   - Product name: `BIGBERLINHACK`
+   - Interface: SwiftUI
+   - Language: Swift
+   - Targeted devices: iPhone + iPad
+   - Deployment target: iOS 26
+4. Delete the auto-generated `ContentView.swift` and `BIGBERLINHACKApp.swift`.
+5. Drag the entire `ios/BIGBERLINHACK/Sources/` directory into the project navigator.
+   Choose "Create groups" and add to the `BIGBERLINHACK` target.
+6. File → Add Package Dependencies →
+   `https://github.com/supabase/supabase-swift` → add `Supabase` product.
+7. Select the project → Signing & Capabilities → set your team.
+8. Build & run.
+
+### Backend (already deployed, FYI only)
+
+```bash
+supabase link --project-ref dlofswfjvntgqakmorvl
+supabase db push                                   # apply migrations
+supabase functions deploy process-worksheet
+supabase functions deploy chat
+supabase functions deploy research
+supabase functions deploy voice-token
+supabase functions deploy generate-video
+```
+
+API keys are stored as Supabase secrets — set via:
+```bash
+supabase secrets set OPENAI_API_KEY=... GOOGLE_API_KEY=... TAVILY_API_KEY=... \
+                    GRADIUM_API_KEY=... HERA_API_KEY=...
+```
+
+## Tech
+
+- **Frontend:** SwiftUI, iOS 26+ Liquid Glass, PencilKit (handwriting capture),
+  PhotosUI (worksheet import), AVFoundation (voice).
+- **Auth/DB/Storage:** Supabase (postgres + RLS, storage with path-based RLS, email/pw auth).
+- **AI orchestration:** Supabase Edge Functions (Deno).
+- **Models:** Gemini 2.5 Pro (reasoning), Gemini 2.5 Flash (chat), gpt-image-2 (edits).
+- **Web:** Tavily search/extract.
+- **Voice:** Gradium realtime (token broker pattern).
+- **Video:** Hera explainer videos (async polling).
+
+## Submission
+
+- Public repo: <https://github.com/xammarie/BIGBERLIN>
+- Track: Hera
+- Partner techs (≥3): Google DeepMind, Gradium, Tavily
+- Bonus: Aikido scan running on the repo (security side challenge)
