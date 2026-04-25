@@ -45,22 +45,25 @@ struct ActionCard: View {
         HStack(spacing: 16) {
             Image(systemName: action.systemImage)
                 .font(.title2)
-                .frame(width: 44, height: 44)
+                .frame(width: 52, height: 52)
                 .glassEffect(in: .circle)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(action.displayName)
                     .font(.headline)
                 Text(action.subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
+                .padding(.trailing, 6)
         }
-        .padding(16)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
-        .glassEffect(in: .rect(cornerRadius: 18))
+        .glassEffect(in: .capsule)
     }
 }

@@ -33,7 +33,7 @@ struct ActionRunView: View {
                                 ) {
                                     Label("pick images", systemImage: "photo.on.rectangle")
                                         .frame(maxWidth: .infinity, minHeight: 80)
-                                        .glassEffect(in: .rect(cornerRadius: 16))
+                                        .glassEffect(in: .rect(cornerRadius: 24, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
                             } else {
@@ -44,7 +44,7 @@ struct ActionRunView: View {
                                                 .resizable()
                                                 .scaledToFill()
                                                 .frame(width: 100, height: 130)
-                                                .clipShape(.rect(cornerRadius: 12))
+                                                .clipShape(.rect(cornerRadius: 18, style: .continuous))
                                         }
                                         PhotosPicker(
                                             selection: $vm.photoSelection,
@@ -53,7 +53,7 @@ struct ActionRunView: View {
                                         ) {
                                             Image(systemName: "plus")
                                                 .frame(width: 100, height: 130)
-                                                .glassEffect(in: .rect(cornerRadius: 12))
+                                                .glassEffect(in: .rect(cornerRadius: 18, style: .continuous))
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -61,7 +61,7 @@ struct ActionRunView: View {
                             }
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 18))
+                        .glassEffect(in: .rect(cornerRadius: 28, style: .continuous))
                     }
 
                     // Mode + handwriting sample
@@ -97,7 +97,7 @@ struct ActionRunView: View {
                             }
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 18))
+                        .glassEffect(in: .rect(cornerRadius: 28, style: .continuous))
                     }
 
                     // Run button
@@ -110,6 +110,7 @@ struct ActionRunView: View {
                         .frame(maxWidth: .infinity, minHeight: 50)
                     }
                     .buttonStyle(.glassProminent)
+                    .clipShape(.capsule)
                     .disabled(!vm.canRun)
 
                     if let error = vm.errorMessage {

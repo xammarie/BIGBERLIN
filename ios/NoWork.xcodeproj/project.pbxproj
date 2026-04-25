@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -50,7 +50,7 @@
 		696BFE4A56D214744E671047 /* VoiceChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChatView.swift; sourceTree = "<group>"; };
 		7C740C5AC656D0FCA676A618 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		81BB7A4B6C961718170252D3 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		8B7EAC9C807ABF6B0AFC215D /* NoWork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NoWork.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8B7EAC9C807ABF6B0AFC215D /* NoWork.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NoWork.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9D153B9E7B0A03A44EBA5CEF /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		AD9BEDC8C49781F8A84A78E8 /* Action.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Action.swift; sourceTree = "<group>"; };
 		B42B40CC953C69512BDA33F5 /* ActionRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRunView.swift; sourceTree = "<group>"; };
@@ -232,7 +232,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					22255343BB1C0AD39C082E3C = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -250,7 +249,6 @@
 			packageReferences = (
 				004E867920E8ED81CAE8AE04 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -312,6 +310,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 77R52ZAG63;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of worksheets to process them with the AI.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio for the voice tutor.";
@@ -327,7 +326,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.scherf.NoWork;
+				PRODUCT_BUNDLE_IDENTIFIER = org.NotWorking.NoWork;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -405,6 +404,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 77R52ZAG63;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of worksheets to process them with the AI.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio for the voice tutor.";
@@ -420,7 +420,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.scherf.NoWork;
+				PRODUCT_BUNDLE_IDENTIFIER = org.NotWorking.NoWork;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

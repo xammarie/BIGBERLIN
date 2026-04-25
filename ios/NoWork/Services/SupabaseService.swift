@@ -13,25 +13,24 @@ final class SupabaseService: ObservableObject {
     private init() {
         client = SupabaseClient(
             supabaseURL: Configuration.supabaseURL,
-            supabaseKey: Configuration.supabaseAnonKey,
-            options: .init(
-                auth: .init(
-                    flowType: .pkce,
-                    autoRefreshToken: true
-                )
-            )
+            supabaseKey: Configuration.supabaseAnonKey
         )
 
-        Task { await listenForAuthChanges() }
+        Task { await bootstrap() }
     }
 
     var currentUserId: UUID? { session?.user.id }
 
-    private func listenForAuthChanges() async {
-        for await (event, session) in client.auth.authStateChanges {
+    private func bootstrap() async {
+        // Try to read an existing local session before subscribing so the UI
+        // doesn't hang on the loading spinner if no auth state event fires.
+        if let existing = try? await client.auth.session {
+            self.session = existing
+        }
+        self.isLoading = false
+
+        for await (_, session) in client.auth.authStateChanges {
             self.session = session
-            self.isLoading = false
-            _ = event
         }
     }
 

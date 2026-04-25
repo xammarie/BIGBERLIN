@@ -21,7 +21,7 @@ struct VoiceChatView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                 }
-                .glassEffect(in: .rect(cornerRadius: 18))
+                .glassEffect(in: .rect(cornerRadius: 28, style: .continuous))
                 .padding()
             }
 
@@ -35,6 +35,7 @@ struct VoiceChatView: View {
                     .fontWeight(.semibold)
             }
             .buttonStyle(.glassProminent)
+            .clipShape(.capsule)
             .padding()
         }
         .navigationTitle("voice tutor")

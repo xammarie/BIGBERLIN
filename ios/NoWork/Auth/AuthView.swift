@@ -7,72 +7,100 @@ struct AuthView: View {
     @State private var mode: Mode = .signIn
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @FocusState private var focused: Field?
 
     enum Mode { case signIn, signUp }
+    enum Field { case email, password }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            VStack(spacing: 8) {
-                Image(systemName: "pencil.and.scribble")
-                    .font(.system(size: 56, weight: .light))
-                Text("homework copilot")
-                    .font(.title2.weight(.semibold))
-                Text("worksheets, your handwriting")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 28) {
+                    Spacer(minLength: max(40, geo.size.height * 0.08))
 
-            VStack(spacing: 12) {
-                TextField("email", text: $email)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(14)
-                    .glassEffect(in: .rect(cornerRadius: 14))
+                    VStack(spacing: 14) {
+                        Image(systemName: "pencil.and.scribble")
+                            .font(.system(size: 60, weight: .light))
+                            .padding(28)
+                            .glassEffect(in: .circle)
+                        Text("NoWork")
+                            .font(.largeTitle.weight(.bold))
+                        Text("your homework, in your handwriting")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
 
-                SecureField("password", text: $password)
-                    .textContentType(mode == .signUp ? .newPassword : .password)
-                    .padding(14)
-                    .glassEffect(in: .rect(cornerRadius: 14))
-            }
-            .padding(.horizontal)
+                    VStack(spacing: 14) {
+                        TextField("email", text: $email)
+                            .textContentType(.emailAddress)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focused, equals: .email)
+                            .submitLabel(.next)
+                            .onSubmit { focused = .password }
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 18)
+                            .glassEffect(in: .capsule)
 
-            Button(action: submit) {
-                HStack {
-                    if isWorking { ProgressView().controlSize(.small) }
-                    Text(mode == .signIn ? "sign in" : "create account")
-                        .fontWeight(.semibold)
+                        SecureField("password", text: $password)
+                            .textContentType(mode == .signUp ? .newPassword : .password)
+                            .focused($focused, equals: .password)
+                            .submitLabel(.go)
+                            .onSubmit { submit() }
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 18)
+                            .glassEffect(in: .capsule)
+                    }
+                    .frame(maxWidth: 480)
+
+                    Button(action: submit) {
+                        HStack(spacing: 10) {
+                            if isWorking { ProgressView().controlSize(.small) }
+                            Text(mode == .signIn ? "sign in" : "create account")
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .clipShape(.capsule)
+                    .frame(maxWidth: 480)
+                    .disabled(isWorking || email.isEmpty || password.isEmpty)
+
+                    Button {
+                        mode = (mode == .signIn) ? .signUp : .signIn
+                        errorMessage = nil
+                    } label: {
+                        Text(mode == .signIn ? "no account? sign up" : "have an account? sign in")
+                            .font(.subheadline)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .glassEffect(in: .capsule)
+                    }
+                    .foregroundStyle(.primary)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(14)
+                            .glassEffect(in: .capsule)
+                    }
+
+                    Spacer(minLength: 40)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent)
-            .disabled(isWorking || email.isEmpty || password.isEmpty)
-            .padding(.horizontal)
-
-            Button {
-                mode = (mode == .signIn) ? .signUp : .signIn
-                errorMessage = nil
-            } label: {
-                Text(mode == .signIn ? "no account? sign up" : "have account? sign in")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            Spacer()
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .padding()
     }
 
     private func submit() {
+        guard !email.isEmpty, !password.isEmpty else { return }
         Task {
             isWorking = true
             errorMessage = nil

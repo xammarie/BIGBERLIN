@@ -73,8 +73,9 @@ struct MessageBubble: View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
             Text(message.content)
-                .padding(12)
-                .glassEffect(in: .rect(cornerRadius: 16))
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .glassEffect(in: .rect(cornerRadius: 24, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
             if message.role == .assistant { Spacer(minLength: 40) }
         }

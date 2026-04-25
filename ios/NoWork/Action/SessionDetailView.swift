@@ -25,7 +25,7 @@ struct SessionDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 240)
-                .glassEffect(in: .rect(cornerRadius: 18))
+                .glassEffect(in: .rect(cornerRadius: 28, style: .continuous))
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -34,7 +34,7 @@ struct SessionDetailView: View {
                                 .resizable()
                                 .scaledToFit()
                                 .frame(maxWidth: 320, maxHeight: 420)
-                                .clipShape(.rect(cornerRadius: 14))
+                                .clipShape(.rect(cornerRadius: 22, style: .continuous))
                         }
                     }
                 }

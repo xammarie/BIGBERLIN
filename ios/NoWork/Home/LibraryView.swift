@@ -45,7 +45,7 @@ struct HandwritingLibraryView: View {
                     HStack {
                         AsyncStorageImage(bucket: .handwriting, path: sample.storagePath)
                             .frame(width: 80, height: 50)
-                            .clipShape(.rect(cornerRadius: 8))
+                            .clipShape(.rect(cornerRadius: 14, style: .continuous))
                         VStack(alignment: .leading) {
                             Text(sample.name)
                             if sample.isDefault {

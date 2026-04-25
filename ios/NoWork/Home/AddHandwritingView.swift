@@ -24,8 +24,9 @@ struct AddHandwritingView: View {
         NavigationStack {
             VStack(spacing: 12) {
                 TextField("name (e.g. \"my regular\")", text: $name)
-                    .padding(12)
-                    .glassEffect(in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 16)
+                    .glassEffect(in: .capsule)
                     .padding(.horizontal)
 
                 Picker("source", selection: $mode) {
@@ -39,7 +40,7 @@ struct AddHandwritingView: View {
                     case .draw:
                         DrawingCanvas(canvas: $canvasView)
                             .background(.white)
-                            .clipShape(.rect(cornerRadius: 14))
+                            .clipShape(.rect(cornerRadius: 22, style: .continuous))
                             .padding(.horizontal)
                     case .photo:
                         VStack {
@@ -47,12 +48,12 @@ struct AddHandwritingView: View {
                                 Image(uiImage: img)
                                     .resizable()
                                     .scaledToFit()
-                                    .clipShape(.rect(cornerRadius: 14))
+                                    .clipShape(.rect(cornerRadius: 22, style: .continuous))
                             } else {
                                 PhotosPicker(selection: $photoItem, matching: .images) {
                                     Label("pick photo of your handwriting", systemImage: "photo")
                                         .frame(maxWidth: .infinity, minHeight: 160)
-                                        .glassEffect(in: .rect(cornerRadius: 14))
+                                        .glassEffect(in: .rect(cornerRadius: 22, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
                             }
