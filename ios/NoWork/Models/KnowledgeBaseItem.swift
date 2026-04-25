@@ -3,6 +3,7 @@ import Foundation
 struct KnowledgeBaseItem: Codable, Identifiable, Hashable {
     let id: UUID
     let userId: UUID
+    let folderId: UUID?
     let storagePath: String
     let filename: String
     let mimeType: String?
@@ -12,6 +13,7 @@ struct KnowledgeBaseItem: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id
         case userId = "user_id"
+        case folderId = "folder_id"
         case storagePath = "storage_path"
         case filename
         case mimeType = "mime_type"

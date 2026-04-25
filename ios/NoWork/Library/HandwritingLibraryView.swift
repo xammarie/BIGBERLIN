@@ -1,32 +1,4 @@
 import SwiftUI
-import PhotosUI
-
-struct LibraryView: View {
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    NavigationLink {
-                        HandwritingLibraryView()
-                    } label: {
-                        Label("handwriting samples", systemImage: "pencil.and.scribble")
-                    }
-                    NavigationLink {
-                        KnowledgeBaseView()
-                    } label: {
-                        Label("knowledge base", systemImage: "books.vertical")
-                    }
-                    NavigationLink {
-                        HistoryView()
-                    } label: {
-                        Label("past sessions", systemImage: "clock.arrow.circlepath")
-                    }
-                }
-            }
-            .navigationTitle("library")
-        }
-    }
-}
 
 struct HandwritingLibraryView: View {
     @StateObject private var vm = HandwritingLibraryViewModel()
@@ -42,11 +14,11 @@ struct HandwritingLibraryView: View {
                 )
             } else {
                 ForEach(vm.samples) { sample in
-                    HStack {
+                    HStack(spacing: 12) {
                         AsyncStorageImage(bucket: .handwriting, path: sample.storagePath)
                             .frame(width: 80, height: 50)
                             .clipShape(.rect(cornerRadius: 14, style: .continuous))
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(sample.name)
                             if sample.isDefault {
                                 Text("default").font(.caption).foregroundStyle(.secondary)
@@ -77,7 +49,8 @@ struct HandwritingLibraryView: View {
         }
         .sheet(isPresented: $showAdd) {
             AddHandwritingView { newSample in
-                vm.samples.append(newSample)
+                vm.samples.insert(newSample, at: 0)
+                Task { await vm.load() }
             }
         }
         .task { await vm.load() }
@@ -107,14 +80,12 @@ final class HandwritingLibraryViewModel: ObservableObject {
 
     func setDefault(_ sample: HandwritingSample) async {
         do {
-            // Clear existing default
             try await supabase.client
                 .from("handwriting_samples")
                 .update(["is_default": false])
                 .eq("user_id", value: sample.userId.uuidString.lowercased())
                 .eq("is_default", value: true)
                 .execute()
-            // Set new default
             try await supabase.client
                 .from("handwriting_samples")
                 .update(["is_default": true])

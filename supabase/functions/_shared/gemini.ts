@@ -5,8 +5,9 @@ import {
     HandwritingMode,
 } from "./prompts.ts";
 
-const GEMINI_MODEL = "gemini-2.5-pro";
-const GEMINI_FLASH = "gemini-2.5-flash";
+export const GEMINI_PRO = "gemini-3.1-pro";
+export const GEMINI_FLASH = "gemini-3.1-flash";
+export const GEMINI_FLASH_LITE = "gemini-3.1-flash-lite";
 
 interface GeminiImage {
     base64: string;
@@ -52,7 +53,7 @@ export async function reasonOverWorksheet(params: {
     };
 
     const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_PRO}:generateContent?key=${apiKey}`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -81,8 +82,11 @@ export async function chatTurn(params: {
     systemPrompt?: string;
     contextFiles?: GeminiImage[];
     webContext?: string;
+    kbContext?: string;
+    model?: string;
 }): Promise<string> {
     const apiKey = Deno.env.get("GOOGLE_API_KEY")!;
+    const model = params.model ?? GEMINI_FLASH;
 
     const contents = params.history.map((m) => ({
         role: m.role === "model" ? "model" : "user",
@@ -90,6 +94,11 @@ export async function chatTurn(params: {
     }));
 
     const userParts: any[] = [{ text: params.userMessage }];
+    if (params.kbContext) {
+        userParts.push({
+            text: `\n\n[Knowledge base context]\n${params.kbContext}`,
+        });
+    }
     if (params.webContext) {
         userParts.push({
             text: `\n\n[Live web research]\n${params.webContext}`,
@@ -113,7 +122,7 @@ export async function chatTurn(params: {
     }
 
     const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -126,4 +135,42 @@ export async function chatTurn(params: {
     }
     const data = await res.json();
     return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+}
+
+export async function generateExplainerPrompt(params: {
+    topic: string;
+    context?: string;
+}): Promise<string> {
+    const apiKey = Deno.env.get("GOOGLE_API_KEY")!;
+    const systemPrompt =
+        `You are a creative director for educational explainer videos. Given a topic
+and any provided context (chat history, KB excerpts, web research), produce a TIGHT
+single-paragraph video prompt for a generative video model. Anti-slop: no flashy
+effects, no clichés, no AI-isms. Concrete visual metaphors. Pedagogical clarity.
+8-12 seconds of footage. Output ONLY the prompt text, no preamble.`;
+
+    const userText = params.context
+        ? `Topic: ${params.topic}\n\nContext:\n${params.context}`
+        : `Topic: ${params.topic}`;
+
+    const body = {
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userText }] }],
+        generationConfig: { temperature: 0.6 },
+    };
+
+    const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_PRO}:generateContent?key=${apiKey}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        },
+    );
+    if (!res.ok) {
+        throw new Error(`Gemini explainer prompt failed: ${await res.text()}`);
+    }
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ??
+        params.topic;
 }

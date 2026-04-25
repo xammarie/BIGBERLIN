@@ -35,6 +35,8 @@ final class EdgeFunctions {
         let chat_id: String
         let reply: String
         let used_web: Bool
+        let kb_used: Bool?
+        let attachments_count: Int?
     }
 
     private struct ChatBody: Encodable {
@@ -42,14 +44,25 @@ final class EdgeFunctions {
         let use_web: Bool
         let chat_id: String?
         let session_id: String?
+        let knowledge_base_folder_id: String?
+        let attachment_paths: [String]?
     }
 
-    func chat(message: String, chatId: UUID? = nil, useWeb: Bool = false, sessionId: UUID? = nil) async throws -> ChatResponse {
+    func chat(
+        message: String,
+        chatId: UUID? = nil,
+        useWeb: Bool = false,
+        sessionId: UUID? = nil,
+        knowledgeBaseFolderId: UUID? = nil,
+        attachmentPaths: [String]? = nil
+    ) async throws -> ChatResponse {
         let body = ChatBody(
             message: message,
             use_web: useWeb,
             chat_id: chatId?.uuidString.lowercased(),
-            session_id: sessionId?.uuidString.lowercased()
+            session_id: sessionId?.uuidString.lowercased(),
+            knowledge_base_folder_id: knowledgeBaseFolderId?.uuidString.lowercased(),
+            attachment_paths: attachmentPaths
         )
         return try await client.invoke(
             "chat",
@@ -101,37 +114,54 @@ final class EdgeFunctions {
 
     // MARK: - generate-video
 
-    struct VideoJob: Decodable {
+    struct VideoStartResponse: Decodable {
         let job_id: String?
+        let status: String
+        let prompt: String?
+    }
+
+    struct VideoJobStatus: Decodable {
         let jobId: String?
         let status: String
-        let video_url: String?
         let videoUrl: String?
+        let video_url: String?
         let error: String?
 
-        var resolvedJobId: String? { job_id ?? jobId }
-        var resolvedVideoUrl: String? { video_url ?? videoUrl }
+        var resolvedVideoUrl: String? { videoUrl ?? video_url }
     }
 
     private struct StartVideoBody: Encodable {
         let topic: String
         let duration_seconds: Int
+        let chat_id: String?
+        let knowledge_base_folder_id: String?
+        let use_web: Bool
     }
 
     private struct VideoStatusBody: Encodable {
         let job_id: String
     }
 
-    func startVideo(topic: String, durationSeconds: Int = 8) async throws -> VideoJob {
+    func startVideo(
+        topic: String,
+        durationSeconds: Int = 8,
+        chatId: UUID? = nil,
+        knowledgeBaseFolderId: UUID? = nil,
+        useWeb: Bool = false
+    ) async throws -> VideoStartResponse {
         try await client.invoke(
             "generate-video",
-            options: FunctionInvokeOptions(
-                body: StartVideoBody(topic: topic, duration_seconds: durationSeconds)
-            )
+            options: FunctionInvokeOptions(body: StartVideoBody(
+                topic: topic,
+                duration_seconds: durationSeconds,
+                chat_id: chatId?.uuidString.lowercased(),
+                knowledge_base_folder_id: knowledgeBaseFolderId?.uuidString.lowercased(),
+                use_web: useWeb
+            ))
         )
     }
 
-    func videoStatus(jobId: String) async throws -> VideoJob {
+    func videoStatus(jobId: String) async throws -> VideoJobStatus {
         try await client.invoke(
             "generate-video",
             options: FunctionInvokeOptions(body: VideoStatusBody(job_id: jobId))
