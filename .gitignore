@@ -1,0 +1,77 @@
+# env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode / Swift
+build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+xcuserdata/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Packages/
+Package.pins
+Package.resolved
+.build/
+.swiftpm/
+playground.xcworkspace
+.netrc
+
+# Python (für backend)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (falls TS backend)
+node_modules/
+dist/
+.next/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# logs / temp
+*.log
+logs/
+tmp/
+temp/
+
+# blob storage / uploads (lokale dev)
+uploads/
+storage/
+*.db
+*.sqlite
+*.sqlite3
