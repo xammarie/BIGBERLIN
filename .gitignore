@@ -5,7 +5,7 @@
 *.pem
 *.key
 secrets/
-ios/BIGBERLINHACK/Sources/Configuration.swift
+ios/NoWork/Configuration.swift
 
 # macOS
 .DS_Store

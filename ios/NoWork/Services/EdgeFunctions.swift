@@ -16,11 +16,15 @@ final class EdgeFunctions {
         let session_id: String?
     }
 
+    private struct ProcessWorksheetBody: Encodable {
+        let session_id: String
+    }
+
     func processWorksheet(sessionId: UUID) async throws -> ProcessWorksheetResponse {
         try await client.invoke(
             "process-worksheet",
             options: FunctionInvokeOptions(
-                body: ["session_id": sessionId.uuidString.lowercased()]
+                body: ProcessWorksheetBody(session_id: sessionId.uuidString.lowercased())
             )
         )
     }
@@ -33,10 +37,20 @@ final class EdgeFunctions {
         let used_web: Bool
     }
 
+    private struct ChatBody: Encodable {
+        let message: String
+        let use_web: Bool
+        let chat_id: String?
+        let session_id: String?
+    }
+
     func chat(message: String, chatId: UUID? = nil, useWeb: Bool = false, sessionId: UUID? = nil) async throws -> ChatResponse {
-        var body: [String: Any] = ["message": message, "use_web": useWeb]
-        if let chatId { body["chat_id"] = chatId.uuidString.lowercased() }
-        if let sessionId { body["session_id"] = sessionId.uuidString.lowercased() }
+        let body = ChatBody(
+            message: message,
+            use_web: useWeb,
+            chat_id: chatId?.uuidString.lowercased(),
+            session_id: sessionId?.uuidString.lowercased()
+        )
         return try await client.invoke(
             "chat",
             options: FunctionInvokeOptions(body: body)
@@ -55,10 +69,15 @@ final class EdgeFunctions {
         let results: [Item]
     }
 
+    private struct ResearchBody: Encodable {
+        let query: String
+        let depth: String
+    }
+
     func research(query: String, depth: String = "basic") async throws -> ResearchResult {
         try await client.invoke(
             "research",
-            options: FunctionInvokeOptions(body: ["query": query, "depth": depth])
+            options: FunctionInvokeOptions(body: ResearchBody(query: query, depth: depth))
         )
     }
 
@@ -71,10 +90,12 @@ final class EdgeFunctions {
         let expires_at: String?
     }
 
+    private struct EmptyBody: Encodable {}
+
     func voiceToken() async throws -> VoiceToken {
         try await client.invoke(
             "voice-token",
-            options: FunctionInvokeOptions(body: [String: String]())
+            options: FunctionInvokeOptions(body: EmptyBody())
         )
     }
 
@@ -92,20 +113,28 @@ final class EdgeFunctions {
         var resolvedVideoUrl: String? { video_url ?? videoUrl }
     }
 
+    private struct StartVideoBody: Encodable {
+        let topic: String
+        let duration_seconds: Int
+    }
+
+    private struct VideoStatusBody: Encodable {
+        let job_id: String
+    }
+
     func startVideo(topic: String, durationSeconds: Int = 8) async throws -> VideoJob {
         try await client.invoke(
             "generate-video",
-            options: FunctionInvokeOptions(body: [
-                "topic": topic,
-                "duration_seconds": durationSeconds,
-            ])
+            options: FunctionInvokeOptions(
+                body: StartVideoBody(topic: topic, duration_seconds: durationSeconds)
+            )
         )
     }
 
     func videoStatus(jobId: String) async throws -> VideoJob {
         try await client.invoke(
             "generate-video",
-            options: FunctionInvokeOptions(body: ["job_id": jobId])
+            options: FunctionInvokeOptions(body: VideoStatusBody(job_id: jobId))
         )
     }
 }

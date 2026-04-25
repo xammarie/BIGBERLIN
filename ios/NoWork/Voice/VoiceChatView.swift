@@ -9,7 +9,7 @@ struct VoiceChatView: View {
             Spacer()
             Image(systemName: vm.isListening ? "waveform.circle.fill" : "mic.circle")
                 .font(.system(size: 96))
-                .foregroundStyle(vm.isListening ? .tint : .secondary)
+                .foregroundStyle(vm.isListening ? Color.accentColor : Color.secondary)
                 .symbolEffect(.pulse, isActive: vm.isListening)
 
             Text(vm.statusText)

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NoWork — your homework, in your handwriting</title>
+    <meta name="description" content="snap a worksheet, get it back filled out in your own handwriting. correct, complete, annotate. built at bigberlinhack 2026." />
+    <meta name="theme-color" content="#ffffff" />
+
+    <meta property="og:title" content="NoWork — your homework, in your handwriting" />
+    <meta property="og:description" content="snap a worksheet, get it back filled out in your own handwriting." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0a'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='-apple-system,sans-serif' font-size='15' font-weight='700' fill='%23f4d35e'%3EN%3C/text%3E%3C/svg%3E" />
+
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            scroll-behavior: smooth;
+        }
+
+        :root {
+            --ink: #0a0a0a;
+            --ink-soft: #2a2a2a;
+            --muted: #6b6b6b;
+            --whisper: #9a9a9a;
+            --line: #ececec;
+            --paper: #ffffff;
+            --highlight: #f4d35e;
+        }
+
+        body {
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "SF Pro Text",
+                "Inter",
+                "Segoe UI",
+                Roboto,
+                sans-serif;
+            font-size: 16px;
+            line-height: 1.55;
+            color: var(--ink);
+            background: var(--paper);
+            font-feature-settings: "ss01", "cv11", "cv02";
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+            border-bottom: 1px solid var(--line);
+            transition: border-color 120ms ease;
+        }
+        a:hover { border-color: var(--ink); }
+
+        .frame {
+            padding: 0 clamp(24px, 5vw, 80px);
+        }
+
+        /* ============== nav ============== */
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 22px 0;
+            border-bottom: 1px solid var(--line);
+        }
+        .brand {
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+        .nav-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .nav-meta a {
+            color: var(--ink-soft);
+            border-bottom: 1px solid var(--line);
+        }
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--ink);
+        }
+
+        /* ============== hero ============== */
+        .hero {
+            padding: clamp(72px, 14vw, 168px) 0 clamp(72px, 12vw, 144px);
+            max-width: 1080px;
+        }
+        h1 {
+            font-size: clamp(40px, 7.4vw, 92px);
+            line-height: 1.0;
+            letter-spacing: -0.04em;
+            font-weight: 600;
+            margin-bottom: 28px;
+        }
+        h1 .yellow {
+            background-image: linear-gradient(transparent 60%, var(--highlight) 60%, var(--highlight) 96%, transparent 96%);
+            padding: 0 2px;
+        }
+        .lead {
+            font-size: clamp(17px, 1.6vw, 20px);
+            line-height: 1.5;
+            color: var(--ink-soft);
+            max-width: 580px;
+            margin-bottom: 36px;
+        }
+        .cta {
+            display: flex;
+            gap: 28px;
+            align-items: center;
+            font-size: 15px;
+            flex-wrap: wrap;
+        }
+        .cta a {
+            font-weight: 500;
+            border: none;
+            position: relative;
+        }
+        .cta a::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; bottom: -3px;
+            height: 1px;
+            background: var(--ink);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 200ms ease;
+        }
+        .cta a:hover::after { transform: scaleX(1); }
+        .cta .arr {
+            display: inline-block;
+            transition: transform 160ms ease;
+        }
+        .cta a:hover .arr { transform: translateX(3px); }
+
+        /* ============== sections (label rail) ============== */
+        section {
+            display: grid;
+            grid-template-columns: minmax(140px, 200px) 1fr;
+            gap: clamp(32px, 6vw, 96px);
+            padding: clamp(64px, 9vw, 112px) 0;
+            border-top: 1px solid var(--line);
+        }
+        .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--whisper);
+            font-weight: 500;
+            padding-top: 4px;
+        }
+        .content { max-width: 760px; }
+
+        .section-h {
+            font-size: clamp(24px, 2.6vw, 32px);
+            line-height: 1.2;
+            letter-spacing: -0.02em;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .section-sub {
+            font-size: 16px;
+            color: var(--muted);
+            margin-bottom: 32px;
+            max-width: 540px;
+        }
+
+        /* ============== row list ============== */
+        .row {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 24px;
+            padding: 18px 0;
+            font-size: 16px;
+            border-top: 1px solid var(--line);
+            line-height: 1.5;
+        }
+        .row:last-child { border-bottom: 1px solid var(--line); }
+        .row .k {
+            color: var(--ink);
+            font-weight: 500;
+        }
+        .row .v { color: var(--muted); }
+
+        /* ============== steps ============== */
+        .step {
+            display: grid;
+            grid-template-columns: 36px 1fr;
+            gap: 18px;
+            padding: 18px 0;
+            border-top: 1px solid var(--line);
+        }
+        .step:last-child { border-bottom: 1px solid var(--line); }
+        .step .num {
+            color: var(--whisper);
+            font-variant-numeric: tabular-nums;
+            font-size: 13px;
+            line-height: 1.7;
+            letter-spacing: 0.02em;
+        }
+        .step .stitle {
+            font-weight: 500;
+            color: var(--ink);
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        .step .sdesc {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        /* ============== built ============== */
+        .built-text {
+            font-size: 17px;
+            line-height: 1.55;
+            color: var(--ink-soft);
+            max-width: 640px;
+        }
+        .built-text + .built-text { margin-top: 18px; }
+        .built-text a {
+            color: var(--ink);
+            border-bottom-color: var(--ink);
+        }
+
+        .stack-label {
+            margin-top: 40px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--whisper);
+            font-weight: 500;
+            margin-bottom: 14px;
+        }
+        .stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .chip {
+            padding: 6px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            font-size: 13px;
+            color: var(--ink-soft);
+        }
+
+        /* ============== footer ============== */
+        footer {
+            display: grid;
+            grid-template-columns: minmax(140px, 200px) repeat(3, 1fr);
+            gap: clamp(24px, 4vw, 64px);
+            padding: clamp(56px, 8vw, 88px) 0 32px;
+            border-top: 1px solid var(--line);
+            font-size: 14px;
+        }
+        footer .label { padding-top: 0; }
+        .foot-col h4 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--whisper);
+            font-weight: 500;
+            margin-bottom: 14px;
+        }
+        .foot-col a {
+            display: block;
+            padding: 5px 0;
+            border: none;
+            color: var(--ink-soft);
+            font-size: 14px;
+        }
+        .foot-col a:hover {
+            color: var(--ink);
+            border: none;
+        }
+        .foot-bar {
+            grid-column: 1 / -1;
+            padding-top: 24px;
+            margin-top: 16px;
+            border-top: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--muted);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        /* ============== mobile ============== */
+        @media (max-width: 760px) {
+            section {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: clamp(48px, 10vw, 72px) 0;
+            }
+            .label { padding-top: 0; }
+            .row {
+                grid-template-columns: 100px 1fr;
+                gap: 14px;
+                font-size: 15px;
+            }
+            footer {
+                grid-template-columns: 1fr 1fr;
+                gap: 28px;
+            }
+            footer .label { grid-column: 1 / -1; }
+            .cta { gap: 22px; }
+        }
+
+        @media (max-width: 420px) {
+            nav .nav-meta span:not(.dot):not(:last-child) { display: none; }
+            .row { grid-template-columns: 88px 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="frame">
+
+        <nav>
+            <span class="brand">NoWork</span>
+            <span class="nav-meta">
+                <span class="dot" aria-hidden="true"></span>
+                <span>live at</span>
+                <a href="https://bigberlin.de" target="_blank" rel="noopener">bigberlinhack ’26</a>
+            </span>
+        </nav>
+
+        <!-- ============== hero ============== -->
+        <header class="hero">
+            <h1>your homework, in <span class="yellow">your</span> handwriting.</h1>
+            <p class="lead">snap a worksheet. pick what you want done. get it back filled out, corrected, or rewritten — looking like you actually wrote it.</p>
+            <div class="cta">
+                <a href="#actions">see what it does <span class="arr">→</span></a>
+                <a href="https://github.com/xammarie/BIGBERLINHACK" target="_blank" rel="noopener">source ↗</a>
+            </div>
+        </header>
+
+        <!-- ============== actions ============== -->
+        <section id="actions">
+            <div class="label">actions</div>
+            <div class="content">
+                <h2 class="section-h">pick what NoWork should do.</h2>
+                <p class="section-sub">one tap, one input. no chat boxes, no prompts. the action is the prompt.</p>
+                <div class="rows">
+                    <div class="row"><div class="k">complete</div><div class="v">finishes the questions you didn’t get to. leaves your right answers untouched.</div></div>
+                    <div class="row"><div class="k">correct</div><div class="v">fixes wrong answers, leaves the right ones alone.</div></div>
+                    <div class="row"><div class="k">fill out</div><div class="v">every blank, every box, in one pass.</div></div>
+                    <div class="row"><div class="k">annotate</div><div class="v">margin notes, underlines, hints in your hand.</div></div>
+                    <div class="row"><div class="k">restyle</div><div class="v">rewrites existing handwriting in any style from your library.</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============== how it works ============== -->
+        <section>
+            <div class="label">how it works</div>
+            <div class="content">
+                <h2 class="section-h">three steps. no chat, no prompts.</h2>
+                <p class="section-sub">we hate writing prompts as much as you hate writing homework.</p>
+                <div class="steps">
+                    <div class="step">
+                        <span class="num">01</span>
+                        <div>
+                            <div class="stitle">snap the page</div>
+                            <p class="sdesc">one or many pages of the worksheet. the camera is the input.</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <span class="num">02</span>
+                        <div>
+                            <div class="stitle">add your hand once</div>
+                            <p class="sdesc">scribble a sample of your handwriting. we keep a small private library you can switch between.</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <span class="num">03</span>
+                        <div>
+                            <div class="stitle">pick an action</div>
+                            <p class="sdesc">complete, correct, fill out, annotate, or restyle. get the pages back ready to print or hand in.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============== built ============== -->
+        <section>
+            <div class="label">built</div>
+            <div class="content">
+                <h2 class="section-h">made in 24 hours.</h2>
+                <p class="section-sub">at <a href="https://bigberlin.de" target="_blank" rel="noopener">bigberlinhack 2026</a> — donaustraße 44, berlin.</p>
+
+                <p class="built-text">
+                    a swift app on top of <a href="https://supabase.com" target="_blank" rel="noopener">supabase edge functions</a>. gemini 2.5 reads the worksheet and reasons. gpt-image-2 renders the answers in your hand. hera generates short video walkthroughs when you want to learn the answer, not just see it.
+                </p>
+                <p class="built-text">
+                    submission requires three partner technologies. we use four — gemini, hera, tavily, and supabase. plus aikido for security.
+                </p>
+
+                <div class="stack-label">stack</div>
+                <div class="stack">
+                    <span class="chip">gemini 2.5</span>
+                    <span class="chip">gpt-image-2</span>
+                    <span class="chip">hera video</span>
+                    <span class="chip">tavily search</span>
+                    <span class="chip">supabase</span>
+                    <span class="chip">aikido</span>
+                    <span class="chip">swiftui</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============== footer ============== -->
+        <footer>
+            <div class="label">NoWork</div>
+
+            <div class="foot-col">
+                <h4>product</h4>
+                <a href="#actions">actions</a>
+                <a href="#">demo video</a>
+            </div>
+
+            <div class="foot-col">
+                <h4>team</h4>
+                <a href="https://marieandmax.com" target="_blank" rel="noopener">marieandmax.com ↗</a>
+                <a href="https://trystyle.org" target="_blank" rel="noopener">trystyle ↗</a>
+            </div>
+
+            <div class="foot-col">
+                <h4>code</h4>
+                <a href="https://github.com/xammarie/BIGBERLINHACK" target="_blank" rel="noopener">github ↗</a>
+                <a href="https://bigberlin.de" target="_blank" rel="noopener">bigberlin ↗</a>
+            </div>
+
+            <div class="foot-bar">
+                <span>© 2026 — a marie & max thing.</span>
+                <span>donaustraße 44, 12043 berlin</span>
+            </div>
+        </footer>
+
+    </div>
+
+</body>
+</html>
