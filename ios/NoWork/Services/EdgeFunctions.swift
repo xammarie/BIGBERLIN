@@ -181,7 +181,7 @@ final class EdgeFunctions {
     }
 
     func voiceSpeech(text: String, voiceId: String) async throws -> Data {
-        var request = URLRequest(url: functionURL("voice-token"))
+        var request = URLRequest(url: voiceFunctionURL())
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Configuration.supabaseAnonKey, forHTTPHeaderField: "apikey")
@@ -205,18 +205,22 @@ final class EdgeFunctions {
         return data
     }
 
-    private func functionURL(_ name: String) -> URL {
+    private func voiceFunctionURL() -> URL {
         let url = Configuration.supabaseURL
         let scheme = url.scheme ?? "https"
-        guard let host = url.host else { return url.appendingPathComponent(name) }
+        let functionName = "voice-token"
+        guard let host = url.host else { return url.appendingPathComponent(functionName) }
         if host.hasSuffix(".supabase.co") {
             let functionsHost = host.replacingOccurrences(
                 of: ".supabase.co",
                 with: ".functions.supabase.co"
             )
-            return URL(string: "\(scheme)://\(functionsHost)/\(name)")!
+            return URL(string: "\(scheme)://\(functionsHost)/\(functionName)")!
         }
-        return url.appendingPathComponent("functions/v1/\(name)")
+        return url
+            .appendingPathComponent("functions")
+            .appendingPathComponent("v1")
+            .appendingPathComponent(functionName)
     }
 
     // MARK: - generate-video

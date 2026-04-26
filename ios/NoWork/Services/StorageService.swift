@@ -22,7 +22,7 @@ final class StorageService {
         image: UIImage,
         bucket: StorageBucket,
         subpath: String? = nil,
-        compression: CGFloat = 0.9
+        compression: CGFloat = 0.95
     ) async throws -> String {
         guard let userId = supabase.currentUserId else {
             throw NSError(domain: "Storage", code: 401,
@@ -87,13 +87,13 @@ final class StorageService {
     }
 
     private static func jpegDataForUpload(image: UIImage, compression: CGFloat) throws -> Data {
-        let resized = image.resizedForUpload(maxDimension: 1800)
-        var quality = min(max(compression, 0.35), 0.92)
+        let resized = image.resizedForUpload(maxDimension: 2400)
+        var quality = min(max(compression, 0.35), 0.95)
         guard var data = resized.jpegData(compressionQuality: quality) else {
             throw NSError(domain: "Storage", code: 0,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to encode image"])
         }
-        while data.count > 4_000_000 && quality > 0.45 {
+        while data.count > 7_500_000 && quality > 0.55 {
             quality -= 0.1
             guard let recompressed = resized.jpegData(compressionQuality: quality) else { break }
             data = recompressed

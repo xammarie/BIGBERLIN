@@ -95,10 +95,8 @@ async function editWithOpenAI(
     const form = new FormData();
     form.append("model", OPENAI_IMAGE_MODEL);
     form.append("prompt", params.prompt);
-    form.append(
-        "quality",
-        params.quality ?? (params.mode === "smart" ? "medium" : "low"),
-    );
+    form.append("quality", params.quality ?? "high");
+    form.append("input_fidelity", "high");
     form.append("size", params.size ?? "auto");
     form.append("output_format", "png");
     form.append("n", "1");

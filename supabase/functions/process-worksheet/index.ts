@@ -233,7 +233,8 @@ async function runPipeline(
                 prompt,
                 handwritingSample: sample?.blob,
                 handwritingSampleName: "handwriting_sample.png",
-                mode: model,
+                quality: "high",
+                mode: "smart",
             });
             requireBlobSize(edited, "edited worksheet image");
             stamp(`editWorksheetImage done (i=${i}, bytes=${edited.size})`);
