@@ -44,6 +44,7 @@ targets:
         INFOPLIST_KEY_NSCameraUsageDescription: "Take photos of worksheets to process them with the AI."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pick worksheet photos and handwriting samples from your library."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Record audio for the voice tutor."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Transcribe voice prompts for the tutor."
         INFOPLIST_KEY_UIRequiresFullScreen: NO
     dependencies:
       - package: Supabase

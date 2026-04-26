@@ -1,21 +1,34 @@
-// voice-token: broker an ephemeral Gradium session token for the swift client.
-// Pattern: client never sees GRADIUM_API_KEY. Edge function exchanges API key
-// for a short-lived session token and returns that to the swift app, which
-// then opens its own websocket to gradium with the token.
+// voice-token: authenticated voice configuration plus server-side Gradium TTS.
 //
-// Client never receives GRADIUM_API_KEY. If the broker endpoint is unavailable,
-// this function fails closed instead of falling back to a raw server secret.
+// The client must never receive GRADIUM_API_KEY. STT is handled locally by iOS
+// Speech; TTS is proxied here so the long-lived Gradium key stays server-side.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import {
+    corsHeaders,
+    errorResponse,
+    handleOptions,
+    jsonResponse,
+} from "../_shared/cors.ts";
 import { authenticate } from "../_shared/supabase.ts";
 import {
+    HttpError,
+    LIMITS,
+    readJsonObject,
     requirePost,
     responseMessage,
     responseStatus,
+    text,
 } from "../_shared/security.ts";
 
-const GRADIUM_TOKEN_URL = "https://api.gradium.ai/v1/realtime/sessions";
+const TTS_URL = "https://api.gradium.ai/api/post/speech/tts";
+const DEFAULT_VOICE_ID = "YTpq7expH9539ERJ";
+const VOICE_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+
+interface VoiceRequest {
+    text?: string;
+    voice_id?: string;
+}
 
 serve(async (req) => {
     const optionsRes = handleOptions(req);
@@ -24,44 +37,76 @@ serve(async (req) => {
     try {
         requirePost(req);
         const auth = await authenticate(req);
-        if (!auth) return errorResponse("Unauthorized", 401);
+        if (!auth) return errorResponse("Unauthorized", 401, req);
 
         const apiKey = Deno.env.get("GRADIUM_API_KEY");
-        if (!apiKey) throw new Error("GRADIUM_API_KEY is not set");
+        if (!apiKey) {
+            console.error("GRADIUM_API_KEY is not set");
+            return errorResponse("Voice not configured", 500, req);
+        }
 
-        const res = await fetch(GRADIUM_TOKEN_URL, {
+        const body = await readJsonObject<VoiceRequest>(req);
+        const speechText = text(body.text, "text", LIMITS.chatMessageChars, {
+            required: false,
+        });
+        if (!speechText) {
+            return jsonResponse({
+                mode: "server_tts",
+                token: null,
+                websocket_url: null,
+                tts_url: functionUrl(req),
+            }, 200, req);
+        }
+
+        const voiceId = parseVoiceId(body.voice_id);
+        const upstream = await fetch(TTS_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
+                "x-api-key": apiKey,
             },
             body: JSON.stringify({
-                user_id: auth.userId,
-                expires_in_seconds: 600,
+                text: speechText,
+                voice_id: voiceId,
+                output_format: "wav",
+                only_audio: true,
             }),
         });
-        if (!res.ok) {
-            console.error("Gradium broker failed:", res.status, await res.text());
-            return errorResponse("Voice token broker unavailable", 502);
+
+        if (!upstream.ok) {
+            console.error("Gradium TTS failed:", upstream.status, await upstream.text());
+            return errorResponse("Voice synthesis failed", 502, req);
         }
 
-        const data = await res.json();
-        const token = data.token ?? data.session_token ?? data.client_secret;
-        if (typeof token !== "string" || token.length === 0) {
-            console.error("Gradium broker returned no client token:", data);
-            return errorResponse("Voice token broker returned no token", 502);
-        }
-        return jsonResponse({
-            mode: "ephemeral",
-            token,
-            expires_at: data.expires_at,
-            websocket_url: data.websocket_url ?? data.ws_url,
+        const audio = await upstream.arrayBuffer();
+        return new Response(audio, {
+            status: 200,
+            headers: {
+                ...corsHeaders(req),
+                "Content-Type": upstream.headers.get("content-type") ?? "audio/wav",
+                "Cache-Control": "no-store",
+            },
         });
     } catch (err) {
         console.error("voice-token error:", err);
         return errorResponse(
-            responseMessage(err, "Voice token request failed"),
+            responseMessage(err, "Voice request failed"),
             responseStatus(err),
+            req,
         );
     }
 });
+
+function parseVoiceId(value: unknown): string {
+    if (value === undefined || value === null || value === "") {
+        return DEFAULT_VOICE_ID;
+    }
+    if (typeof value !== "string" || !VOICE_ID_RE.test(value)) {
+        throw new HttpError(400, "voice_id has an invalid value");
+    }
+    return value;
+}
+
+function functionUrl(req: Request): string {
+    return new URL(req.url).toString();
+}

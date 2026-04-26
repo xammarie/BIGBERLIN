@@ -238,8 +238,10 @@ async function runPipeline(
             requireBlobSize(edited, "edited worksheet image");
             stamp(`editWorksheetImage done (i=${i}, bytes=${edited.size})`);
 
+            const outputContentType = imageContentType(edited.type);
+            const outputExtension = imageExtension(outputContentType);
             const outputPath = sanitizeStoragePathForUser(
-                `${userId}/${sessionId}/${i}-${Date.now()}.png`,
+                `${userId}/${sessionId}/${i}-${Date.now()}.${outputExtension}`,
                 userId,
                 "worksheet output path",
             );
@@ -250,7 +252,7 @@ async function runPipeline(
             const { error: uploadErr } = await supabase.storage
                 .from("worksheets-output")
                 .upload(safeOutputObjectName, edited, {
-                    contentType: "image/png",
+                    contentType: outputContentType,
                     upsert: false,
                 });
             if (uploadErr) {
@@ -340,10 +342,29 @@ function pipelinePublicMessage(err: unknown): string {
         "Library mode requires",
         "Gemini returned",
         "Gemini did not",
+        "Image generation is not configured",
         "Unsupported",
     ];
     if (safePrefixes.some((prefix) => message.startsWith(prefix))) {
         return message;
     }
     return "Worksheet processing failed. Please retry with a smaller, clearer image.";
+}
+
+function imageContentType(type: string | undefined): string {
+    if (type === "image/png" || type === "image/jpeg" || type === "image/webp") {
+        return type;
+    }
+    return "image/png";
+}
+
+function imageExtension(contentType: string): string {
+    switch (contentType) {
+        case "image/jpeg":
+            return "jpg";
+        case "image/webp":
+            return "webp";
+        default:
+            return "png";
+    }
 }

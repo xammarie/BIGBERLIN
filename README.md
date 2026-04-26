@@ -16,7 +16,8 @@ Swift app (iOS/iPadOS 26+, Liquid Glass)
         ├─► Tavily      — live web research (used as a chat tool)
         └─► Hera        — explainer video generation
 
-Gradium realtime voice  ◀── direct WebSocket from app, ephemeral token brokered by edge function
+Voice input uses iOS Speech locally; Gradium TTS is proxied through an edge function so
+the Gradium API key never ships to the app.
 ```
 
 ## Actions
@@ -86,9 +87,12 @@ supabase functions deploy generate-video
 
 API keys are stored as Supabase secrets — set via:
 ```bash
-supabase secrets set OPENROUTER_API_KEY=... TAVILY_API_KEY=... \
-                    GRADIUM_API_KEY=... HERA_API_KEY=...
+supabase secrets set OPENAI_API_KEY=... OPENROUTER_API_KEY=... \
+                    TAVILY_API_KEY=... GRADIUM_API_KEY=... HERA_API_KEY=...
 ```
+Image edits default to OpenRouter. Set `IMAGE_PROVIDER=openai` only if the
+OpenAI organization is verified for GPT Image access; set `IMAGE_PROVIDER=auto`
+to try the other provider after a provider failure.
 
 ## Tech
 
@@ -98,7 +102,7 @@ supabase secrets set OPENROUTER_API_KEY=... TAVILY_API_KEY=... \
 - **AI orchestration:** Supabase Edge Functions (Deno).
 - **Models:** Gemini 2.5 Pro (reasoning), Gemini 2.5 Flash (chat), gpt-image-2 (edits).
 - **Web:** Tavily search/extract.
-- **Voice:** Gradium realtime (token broker pattern).
+- **Voice:** iOS Speech transcription + Gradium TTS through a server-side proxy.
 - **Video:** Hera explainer videos (async polling).
 
 ## Submission

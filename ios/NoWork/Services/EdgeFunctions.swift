@@ -22,28 +22,55 @@ final class EdgeFunctions {
         if let token = supabase.session?.accessToken {
             headers["Authorization"] = "Bearer \(token)"
         }
-        do {
-            return try await client.invoke(
-                name,
-                options: FunctionInvokeOptions(headers: headers, body: body)
-            )
-        } catch let err as FunctionsError {
-            if case .httpError(let code, let data) = err,
-               let str = String(data: data, encoding: .utf8) {
-                if let parsed = try? JSONDecoder().decode([String: String].self, from: data),
-                   let msg = parsed["error"] ?? parsed["message"] {
-                    throw RemoteError(code: code, message: msg)
+
+        // Retry transient gateway hiccups (502/503/504) — supabase fronts edge
+        // functions through cloudflare and sometimes returns these on cold starts
+        // or upstream timeouts even though the function itself is healthy.
+        let retryableCodes: Set<Int> = [502, 503, 504]
+        let backoffs: [UInt64] = [400_000_000, 1_200_000_000]
+        var attempt = 0
+
+        while true {
+            do {
+                return try await client.invoke(
+                    name,
+                    options: FunctionInvokeOptions(headers: headers, body: body)
+                )
+            } catch let err as FunctionsError {
+                if case .httpError(let code, let data) = err {
+                    if retryableCodes.contains(code), attempt < backoffs.count {
+                        try? await Task.sleep(nanoseconds: backoffs[attempt])
+                        attempt += 1
+                        continue
+                    }
+                    if let str = String(data: data, encoding: .utf8) {
+                        if let parsed = try? JSONDecoder().decode([String: String].self, from: data),
+                           let msg = parsed["error"] ?? parsed["message"] {
+                            throw RemoteError(code: code, message: msg)
+                        }
+                        throw RemoteError(code: code, message: str)
+                    }
                 }
-                throw RemoteError(code: code, message: str)
+                throw err
             }
-            throw err
         }
     }
 
     struct RemoteError: LocalizedError {
         let code: Int
         let message: String
-        var errorDescription: String? { "\(code): \(message)" }
+        var errorDescription: String? {
+            switch code {
+            case 502, 503, 504:
+                return "the AI is busy right now — try again in a sec"
+            case 401:
+                return "your session expired — please sign in again"
+            case 413:
+                return "image too large — try a smaller one"
+            default:
+                return "\(code): \(message)"
+            }
+        }
     }
 
     // MARK: - process-worksheet
@@ -137,15 +164,59 @@ final class EdgeFunctions {
 
     struct VoiceToken: Decodable {
         let mode: String
-        let token: String
+        let token: String?
         let websocket_url: String?
+        let tts_url: String?
         let expires_at: String?
     }
 
     private struct EmptyBody: Encodable {}
+    private struct VoiceSpeechBody: Encodable {
+        let text: String
+        let voice_id: String
+    }
 
     func voiceToken() async throws -> VoiceToken {
         try await invoke("voice-token", body: EmptyBody())
+    }
+
+    func voiceSpeech(text: String, voiceId: String) async throws -> Data {
+        var request = URLRequest(url: functionURL("voice-token"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Configuration.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        if let token = supabase.session?.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(
+            VoiceSpeechBody(text: text, voice_id: voiceId)
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return data }
+        guard (200..<300).contains(http.statusCode) else {
+            if let parsed = try? JSONDecoder().decode([String: String].self, from: data),
+               let message = parsed["error"] ?? parsed["message"] {
+                throw RemoteError(code: http.statusCode, message: message)
+            }
+            let message = String(data: data, encoding: .utf8) ?? "Voice request failed"
+            throw RemoteError(code: http.statusCode, message: message)
+        }
+        return data
+    }
+
+    private func functionURL(_ name: String) -> URL {
+        let url = Configuration.supabaseURL
+        let scheme = url.scheme ?? "https"
+        guard let host = url.host else { return url.appendingPathComponent(name) }
+        if host.hasSuffix(".supabase.co") {
+            let functionsHost = host.replacingOccurrences(
+                of: ".supabase.co",
+                with: ".functions.supabase.co"
+            )
+            return URL(string: "\(scheme)://\(functionsHost)/\(name)")!
+        }
+        return url.appendingPathComponent("functions/v1/\(name)")
     }
 
     // MARK: - generate-video

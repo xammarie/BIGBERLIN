@@ -34,6 +34,7 @@
 		F1C9CBB478066F2A12D3FA1E /* AddFolderItemsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C21B4FA65EF5AAA63F1890 /* AddFolderItemsView.swift */; };
 		F60DB1A005E1306318D25A95 /* HandwritingLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A310352A9DBEDFDAE226D10F /* HandwritingLibraryView.swift */; };
 		F8E6C3AF313A2BCEF987AABE /* VoiceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF9B73F18886274BF330A1D /* VoiceSheet.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* VoiceTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E1D2C3B4A5968778695A4B /* VoiceTranscriber.swift */; };
 		FF0635C30630D2688BBAA0B4 /* Configuration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36DFEFBB8B3E3647CBDC9FF6 /* Configuration.swift */; };
 /* End PBXBuildFile section */
 
@@ -52,6 +53,7 @@
 		48D215076FBE8672677A3E84 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4A060FDA3F65947B0383EC73 /* PromptBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptBar.swift; sourceTree = "<group>"; };
 		4AF9B73F18886274BF330A1D /* VoiceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSheet.swift; sourceTree = "<group>"; };
+		F0E1D2C3B4A5968778695A4B /* VoiceTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranscriber.swift; sourceTree = "<group>"; };
 		5D31E8C9486377CDB37B89E7 /* KBFoldersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KBFoldersView.swift; sourceTree = "<group>"; };
 		81BB7A4B6C961718170252D3 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		8B7EAC9C807ABF6B0AFC215D /* NoWork.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NoWork.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -156,6 +158,7 @@
 				4482DF1AD2059C455786CED5 /* EdgeFunctions.swift */,
 				4629342E781107B15C95B587 /* StorageService.swift */,
 				3EBEED8D37F9CD9036175920 /* SupabaseService.swift */,
+				F0E1D2C3B4A5968778695A4B /* VoiceTranscriber.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -320,6 +323,7 @@
 				55A61C9CE99536DB9D1AABD8 /* StorageService.swift in Sources */,
 				8367729F1D12C838A09B73C7 /* SupabaseService.swift in Sources */,
 				F8E6C3AF313A2BCEF987AABE /* VoiceSheet.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* VoiceTranscriber.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,6 +340,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of worksheets to process them with the AI.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio for the voice tutor.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Pick worksheet photos and handwriting samples from your library.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribe voice prompts for the tutor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -429,6 +434,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos of worksheets to process them with the AI.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio for the voice tutor.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Pick worksheet photos and handwriting samples from your library.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribe voice prompts for the tutor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
