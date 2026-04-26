@@ -110,7 +110,18 @@ final class SessionDetailViewModel: ObservableObject {
 
     private let supabase = SupabaseService.shared
     private let storage = StorageService.shared
+    private let edge = EdgeFunctions.shared
     private var pollTask: Task<Void, Never>?
+    private var retryRequested = false
+
+    private struct SessionInputRef: Decodable {
+        let id: UUID
+    }
+
+    private struct CompleteSessionUpdate: Encodable {
+        let status: String
+        let completed_at: Date
+    }
 
     init(sessionId: UUID) {
         self.sessionId = sessionId
@@ -142,7 +153,8 @@ final class SessionDetailViewModel: ObservableObject {
                 .execute()
                 .value
 
-            status = session.status
+            let remoteStatus = session.status
+            status = remoteStatus
             switch status {
             case .pending: statusText = "queued…"
             case .processing: statusText = "thinking + drawing…"
@@ -150,38 +162,94 @@ final class SessionDetailViewModel: ObservableObject {
             case .failed: statusText = session.error ?? "something broke"
             }
 
-            if status == .complete && outputImages.isEmpty {
-                let outputs: [SessionOutput] = try await supabase.client
-                    .from("session_outputs")
-                    .select()
-                    .eq("session_id", value: sessionId.uuidString.lowercased())
-                    .order("created_at", ascending: true)
-                    .execute()
-                    .value
-
-                var loaded: [WorksheetOutputImage] = []
-                for (index, o) in outputs.enumerated() {
-                    let data = try await storage.download(bucket: .worksheetsOutput, path: o.storagePath)
-                    if let img = UIImage(data: data) {
-                        let fileURL = try writeDownloadFile(
-                            data: data,
-                            output: o,
-                            index: index
-                        )
-                        loaded.append(WorksheetOutputImage(
-                            id: o.id,
-                            image: img,
-                            fileURL: fileURL
-                        ))
-                    }
+            if status != .failed {
+                let outputCount = try await refreshOutputs(remoteStatus: remoteStatus)
+                if remoteStatus == .processing,
+                   outputCount == 0,
+                   !retryRequested,
+                   Date().timeIntervalSince(session.createdAt) > 240 {
+                    retryRequested = true
+                    statusText = "retrying…"
+                    _ = try? await edge.processWorksheet(sessionId: sessionId, model: .fast)
                 }
-                outputImages = loaded
             }
             if status == .failed {
                 error = session.error
             }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func refreshOutputs(remoteStatus: SessionStatus) async throws -> Int {
+        let outputs: [SessionOutput] = try await supabase.client
+            .from("session_outputs")
+            .select()
+            .eq("session_id", value: sessionId.uuidString.lowercased())
+            .order("created_at", ascending: true)
+            .execute()
+            .value
+
+        if !outputs.isEmpty,
+           outputImages.isEmpty || outputImages.count != outputs.count {
+            outputImages = try await loadOutputImages(outputs)
+        }
+
+        guard !outputs.isEmpty else { return 0 }
+
+        let inputs: [SessionInputRef] = try await supabase.client
+            .from("session_inputs")
+            .select("id")
+            .eq("session_id", value: sessionId.uuidString.lowercased())
+            .execute()
+            .value
+
+        if !inputs.isEmpty && outputs.count >= inputs.count {
+            status = .complete
+            statusText = "done"
+            error = nil
+            if remoteStatus != .complete {
+                await markSessionComplete()
+            }
+        }
+        return outputs.count
+    }
+
+    private func loadOutputImages(_ outputs: [SessionOutput]) async throws -> [WorksheetOutputImage] {
+        var loaded: [WorksheetOutputImage] = []
+        for (index, output) in outputs.enumerated() {
+            let data = try await storage.download(
+                bucket: .worksheetsOutput,
+                path: output.storagePath
+            )
+            if let image = UIImage(data: data) {
+                let fileURL = try writeDownloadFile(
+                    data: data,
+                    output: output,
+                    index: index
+                )
+                loaded.append(WorksheetOutputImage(
+                    id: output.id,
+                    image: image,
+                    fileURL: fileURL
+                ))
+            }
+        }
+        return loaded
+    }
+
+    private func markSessionComplete() async {
+        do {
+            try await supabase.client
+                .from("sessions")
+                .update(CompleteSessionUpdate(
+                    status: SessionStatus.complete.rawValue,
+                    completed_at: Date()
+                ))
+                .eq("id", value: sessionId.uuidString.lowercased())
+                .execute()
+        } catch {
+            // Non-fatal: UI can still show/download the completed outputs.
         }
     }
 

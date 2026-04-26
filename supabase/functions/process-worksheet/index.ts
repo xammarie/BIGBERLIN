@@ -59,6 +59,7 @@ serve(async (req) => {
             .from("sessions")
             .select(
                 `id, user_id, action, status, mode, handwriting_sample_id,
+                 created_at,
                  session_inputs(id, storage_path, "order"),
                  handwriting_samples(id, storage_path, name)`,
             )
@@ -71,8 +72,34 @@ serve(async (req) => {
             return errorResponse("Failed to load session", 500);
         }
         if (!session) return errorResponse("Session not found", 404);
-        if (session.status === "processing" || session.status === "complete") {
+        if (session.status === "complete") {
             return jsonResponse({ status: session.status, session_id });
+        }
+        if (session.status === "processing") {
+            const inputCount = ((session.session_inputs as any[]) ?? []).length;
+            const { count, error: outputCountErr } = await supabase
+                .from("session_outputs")
+                .select("id", { count: "exact", head: true })
+                .eq("session_id", session_id);
+            if (outputCountErr) {
+                throw new Error(`Output lookup failed: ${outputCountErr.message}`);
+            }
+            if (inputCount > 0 && (count ?? 0) >= inputCount) {
+                await supabase.from("sessions").update({
+                    status: "complete",
+                    completed_at: new Date().toISOString(),
+                }).eq("id", session_id).eq("user_id", auth.userId);
+                return jsonResponse({ status: "complete", session_id });
+            }
+            const startedAt = Date.parse((session as any).created_at ?? "");
+            const stale = Number.isFinite(startedAt) &&
+                Date.now() - startedAt > 4 * 60 * 1000;
+            if (!stale) {
+                return jsonResponse({ status: session.status, session_id });
+            }
+            console.warn(
+                `Restarting stale processing session ${session_id} with ${count ?? 0}/${inputCount} outputs`,
+            );
         }
 
         // Mark as processing immediately
@@ -233,8 +260,7 @@ async function runPipeline(
                 prompt,
                 handwritingSample: sample?.blob,
                 handwritingSampleName: "handwriting_sample.png",
-                quality: "high",
-                mode: "smart",
+                mode: model,
             });
             requireBlobSize(edited, "edited worksheet image");
             stamp(`editWorksheetImage done (i=${i}, bytes=${edited.size})`);
