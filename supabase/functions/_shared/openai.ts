@@ -5,8 +5,14 @@
 
 import { blobToBase64 } from "./utils.ts";
 
-const OPENROUTER_IMAGE_MODEL = "openai/gpt-5.4-image-2";
+// Two image-edit models, picked by `mode`:
+// - "fast"  — google/gemini-3.1-flash-image-preview, ~15s, ~3¢ per image
+// - "smart" — openai/gpt-5.4-image-2, ~150s, ~27¢ per image (best quality)
+const IMAGE_MODEL_FAST = "google/gemini-3.1-flash-image-preview";
+const IMAGE_MODEL_SMART = "openai/gpt-5.4-image-2";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+export type ImageEditMode = "fast" | "smart";
 
 export interface EditImageParams {
     worksheet: Blob;
@@ -16,6 +22,7 @@ export interface EditImageParams {
     handwritingSampleName?: string;
     size?: "auto" | "1024x1024" | "1024x1536" | "1536x1024";
     quality?: "low" | "medium" | "high" | "auto";
+    mode?: ImageEditMode;
 }
 
 interface ORImage {
@@ -61,8 +68,9 @@ export async function editWorksheetImage(
         });
     }
 
+    const model = params.mode === "smart" ? IMAGE_MODEL_SMART : IMAGE_MODEL_FAST;
     const body = {
-        model: OPENROUTER_IMAGE_MODEL,
+        model,
         modalities: ["image", "text"],
         messages: [{ role: "user", content: userContent }],
     };

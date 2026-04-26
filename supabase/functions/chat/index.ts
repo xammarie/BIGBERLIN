@@ -17,6 +17,7 @@ import { chatTurn, ChatMessage, ModelMode } from "../_shared/gemini.ts";
 import { tavilySearch } from "../_shared/tavily.ts";
 import { blobToBase64, inferMimeFromPath } from "../_shared/utils.ts";
 import {
+    assertSafeStorageObjectName,
     enumValue,
     HttpError,
     LIMITS,
@@ -187,12 +188,16 @@ serve(async (req) => {
         const attachmentImages: { base64: string; mimeType: string }[] = [];
         if (attachmentPaths.length) {
             for (const ownedAttachmentPath of attachmentPaths) {
+                const safeAttachmentObjectName = assertSafeStorageObjectName(
+                    ownedAttachmentPath,
+                    "attachment path",
+                );
                 const { data, error } = await supabase.storage
                     .from("worksheets-input")
-                    .download(ownedAttachmentPath);
+                    .download(safeAttachmentObjectName);
                 if (error || !data) {
                     console.warn(
-                        `Failed to fetch attachment ${ownedAttachmentPath}:`,
+                        `Failed to fetch attachment ${safeAttachmentObjectName}:`,
                         error,
                     );
                     throw new HttpError(400, "Attachment could not be loaded");
@@ -200,7 +205,7 @@ serve(async (req) => {
                 requireBlobSize(data, "attachment image");
                 attachmentImages.push({
                     base64: await blobToBase64(data),
-                    mimeType: inferMimeFromPath(ownedAttachmentPath),
+                    mimeType: inferMimeFromPath(safeAttachmentObjectName),
                 });
             }
         }

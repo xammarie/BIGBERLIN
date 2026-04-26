@@ -16,9 +16,7 @@ export type ModelMode = "fast" | "smart";
 export const GEMINI_FAST = "google/gemini-3.1-flash-lite-preview";
 export const GEMINI_SMART = "google/gemini-3.1-pro-preview";
 
-// Reasoning that backs worksheet processing + explainer prompts. Always smart
-// — these calls plan out gpt-image-2 prompts and Hera prompts and chat depends
-// on them being right.
+// Default reasoning model for worksheet processing + explainer prompts.
 export const GEMINI_REASONING = GEMINI_SMART;
 
 // Compatibility aliases so any older imports keep building. Treat them as
@@ -103,6 +101,8 @@ export async function reasonOverWorksheet(params: {
     action: ActionType;
     mode: HandwritingMode;
     extraContext?: string;
+    /** "fast" → flash-lite-preview, "smart" → pro-preview. Defaults to fast. */
+    modelMode?: ModelMode;
 }): Promise<ReasoningResult> {
     const systemPrompt = buildSystemPrompt(
         params.action,
@@ -120,7 +120,7 @@ export async function reasonOverWorksheet(params: {
     });
 
     const text = await callOR({
-        model: GEMINI_REASONING,
+        model: resolveModel(params.modelMode),
         temperature: 0.4,
         response_format: {
             type: "json_schema",

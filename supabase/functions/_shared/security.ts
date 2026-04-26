@@ -127,18 +127,30 @@ export function userStoragePath(
     if (typeof value !== "string") {
         throw new HttpError(400, `${field} must be a string`);
     }
-    const path = value.trim();
+    const path = assertSafeStorageObjectName(value, field);
     const ownerPrefix = `${userId.toLowerCase()}/`;
+    if (!path.startsWith(ownerPrefix)) {
+        throw new HttpError(403, `${field} is not owned by the current user`);
+    }
+    return path;
+}
+
+export function assertSafeStorageObjectName(
+    value: string,
+    field = "storage path",
+): string {
+    const path = value.trim();
+    const normalized = path.replace(/\\/g, "/");
     if (
         path.length === 0 ||
         path.length > 512 ||
+        normalized !== path ||
         path.startsWith("/") ||
         path.includes("..") ||
         path.includes("//") ||
-        !path.startsWith(ownerPrefix) ||
         !STORAGE_PATH_RE.test(path)
     ) {
-        throw new HttpError(403, `${field} is not owned by the current user`);
+        throw new HttpError(403, `${field} contains an unsafe object name`);
     }
     return path;
 }

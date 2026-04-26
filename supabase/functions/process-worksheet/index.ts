@@ -11,11 +11,13 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { handleOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { adminClient, authenticate } from "../_shared/supabase.ts";
-import { reasonOverWorksheet } from "../_shared/gemini.ts";
+import { ModelMode, reasonOverWorksheet } from "../_shared/gemini.ts";
 import { editWorksheetImage } from "../_shared/openai.ts";
 import { ActionType, HandwritingMode } from "../_shared/prompts.ts";
 import { blobToBase64, inferMimeFromPath } from "../_shared/utils.ts";
 import {
+    assertSafeStorageObjectName,
+    enumValue,
     HttpError,
     LIMITS,
     readJsonObject,
@@ -29,6 +31,7 @@ import {
 
 interface ProcessRequest {
     session_id: string;
+    model?: ModelMode;
 }
 
 serve(async (req) => {
@@ -40,10 +43,14 @@ serve(async (req) => {
         const auth = await authenticate(req);
         if (!auth) return errorResponse("Unauthorized", 401);
 
-        const { session_id: rawSessionId } = await readJsonObject<ProcessRequest>(
-            req,
+        const reqBody = await readJsonObject<ProcessRequest>(req);
+        const session_id = uuid(reqBody.session_id, "session_id");
+        const model = enumValue<ModelMode>(
+            reqBody.model,
+            "model",
+            ["fast", "smart"] as const,
+            "fast",
         );
-        const session_id = uuid(rawSessionId, "session_id");
 
         const supabase = adminClient();
 
@@ -76,7 +83,7 @@ serve(async (req) => {
 
         // Run the pipeline in background
         // @ts-ignore EdgeRuntime is available in supabase edge functions
-        EdgeRuntime.waitUntil(runPipeline(session_id, auth.userId));
+        EdgeRuntime.waitUntil(runPipeline(session_id, auth.userId, model));
 
         return jsonResponse({ status: "started", session_id });
     } catch (err) {
@@ -88,13 +95,17 @@ serve(async (req) => {
     }
 });
 
-async function runPipeline(sessionId: string, userId: string): Promise<void> {
+async function runPipeline(
+    sessionId: string,
+    userId: string,
+    model: ModelMode,
+): Promise<void> {
     const supabase = adminClient();
     const t0 = Date.now();
     const stamp = (label: string) => {
         console.log(`[pipeline ${sessionId}] +${Date.now() - t0}ms ${label}`);
     };
-    stamp("start");
+    stamp(`start mode=${model}`);
 
     try {
         // Re-fetch with full data
@@ -131,9 +142,13 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                     userId,
                     "worksheet input path",
                 );
+                const safeWorksheetObjectName = assertSafeStorageObjectName(
+                    ownedWorksheetPath,
+                    "worksheet input path",
+                );
                 const { data, error: dlErr } = await supabase.storage
                     .from("worksheets-input")
-                    .download(ownedWorksheetPath);
+                    .download(safeWorksheetObjectName);
                 if (dlErr || !data) {
                     throw new Error(
                         `Failed to download input ${input.id}: ${dlErr?.message}`,
@@ -145,7 +160,7 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                     id: input.id,
                     blob: data,
                     base64,
-                    mimeType: inferMimeFromPath(ownedWorksheetPath),
+                    mimeType: inferMimeFromPath(safeWorksheetObjectName),
                 };
             }),
         );
@@ -167,9 +182,13 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                 userId,
                 "handwriting sample path",
             );
+            const safeSampleObjectName = assertSafeStorageObjectName(
+                ownedSamplePath,
+                "handwriting sample path",
+            );
             const { data, error: dlErr } = await supabase.storage
                 .from("handwriting")
-                .download(ownedSamplePath);
+                .download(safeSampleObjectName);
             if (dlErr || !data) {
                 throw new Error(
                     `Failed to download handwriting sample: ${dlErr?.message}`,
@@ -178,7 +197,7 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             requireBlobSize(data, "handwriting sample");
             sample = {
                 blob: data,
-                mimeType: inferMimeFromPath(ownedSamplePath),
+                mimeType: inferMimeFromPath(safeSampleObjectName),
             };
         }
 
@@ -193,6 +212,7 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             })),
             action,
             mode,
+            modelMode: model,
         });
         stamp(`reasoning done — ${reasoning.images?.length ?? 0} prompts`);
 
@@ -213,6 +233,7 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                 prompt,
                 handwritingSample: sample?.blob,
                 handwritingSampleName: "handwriting_sample.png",
+                mode: model,
             });
             requireBlobSize(edited, "edited worksheet image");
             stamp(`editWorksheetImage done (i=${i}, bytes=${edited.size})`);
@@ -222,9 +243,13 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                 userId,
                 "worksheet output path",
             );
+            const safeOutputObjectName = assertSafeStorageObjectName(
+                outputPath,
+                "worksheet output path",
+            );
             const { error: uploadErr } = await supabase.storage
                 .from("worksheets-output")
-                .upload(outputPath, edited, {
+                .upload(safeOutputObjectName, edited, {
                     contentType: "image/png",
                     upsert: false,
                 });
@@ -236,7 +261,7 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             await supabase.from("session_outputs").insert({
                 session_id: sessionId,
                 source_input_id: input.id,
-                storage_path: outputPath,
+                storage_path: safeOutputObjectName,
                 prompt_used: prompt,
             });
             stamp(`db insert done (i=${i})`);

@@ -55,12 +55,19 @@ final class EdgeFunctions {
 
     private struct ProcessWorksheetBody: Encodable {
         let session_id: String
+        let model: String
     }
 
-    func processWorksheet(sessionId: UUID) async throws -> ProcessWorksheetResponse {
+    func processWorksheet(
+        sessionId: UUID,
+        model: ModelMode = .fast
+    ) async throws -> ProcessWorksheetResponse {
         try await invoke(
             "process-worksheet",
-            body: ProcessWorksheetBody(session_id: sessionId.uuidString.lowercased())
+            body: ProcessWorksheetBody(
+                session_id: sessionId.uuidString.lowercased(),
+                model: model.rawValue
+            )
         )
     }
 

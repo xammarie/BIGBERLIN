@@ -360,7 +360,7 @@ final class ChatViewModel: ObservableObject {
                 try await supabase.client.from("session_inputs").insert(inputs).execute()
 
                 // Kick off pipeline
-                _ = try await edge.processWorksheet(sessionId: session.id)
+                _ = try await edge.processWorksheet(sessionId: session.id, model: model)
 
                 messages.append(.worksheetSession(id: UUID(), sessionId: session.id, action: worksheetAction))
                 await persistChat()
