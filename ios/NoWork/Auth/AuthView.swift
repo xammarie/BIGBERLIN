@@ -19,10 +19,11 @@ struct AuthView: View {
                     Spacer(minLength: max(40, geo.size.height * 0.08))
 
                     VStack(spacing: 14) {
-                        Image(systemName: "pencil.and.scribble")
-                            .font(.system(size: 60, weight: .light))
-                            .padding(28)
-                            .glassEffect(in: .circle)
+                        Image("Logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 96, height: 96)
+                            .clipShape(.rect(cornerRadius: 22, style: .continuous))
                         Text("NoWork")
                             .font(.largeTitle.weight(.bold))
                         Text("your homework, in your handwriting")
@@ -100,7 +101,12 @@ struct AuthView: View {
     }
 
     private func submit() {
-        guard !email.isEmpty, !password.isEmpty else { return }
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedEmail.isEmpty, !password.isEmpty else { return }
+        guard mode == .signIn || password.count >= 8 else {
+            errorMessage = "password must be at least 8 characters"
+            return
+        }
         Task {
             isWorking = true
             errorMessage = nil
@@ -108,9 +114,9 @@ struct AuthView: View {
             do {
                 switch mode {
                 case .signIn:
-                    try await supabase.signIn(email: email, password: password)
+                    try await supabase.signIn(email: normalizedEmail, password: password)
                 case .signUp:
-                    try await supabase.signUp(email: email, password: password)
+                    try await supabase.signUp(email: normalizedEmail, password: password)
                 }
             } catch {
                 errorMessage = error.localizedDescription

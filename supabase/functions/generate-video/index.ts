@@ -12,6 +12,18 @@ import { adminClient, authenticate } from "../_shared/supabase.ts";
 import { generateExplainerPrompt } from "../_shared/gemini.ts";
 import { getVideoStatus, startVideoGeneration } from "../_shared/hera.ts";
 import { tavilySearch } from "../_shared/tavily.ts";
+import {
+    boundedInt,
+    HttpError,
+    jobId,
+    LIMITS,
+    optionalUuid,
+    readJsonObject,
+    requirePost,
+    responseMessage,
+    responseStatus,
+    text,
+} from "../_shared/security.ts";
 
 interface VideoRequest {
     topic?: string;
@@ -27,56 +39,96 @@ serve(async (req) => {
     if (optionsRes) return optionsRes;
 
     try {
+        requirePost(req);
         const auth = await authenticate(req);
         if (!auth) return errorResponse("Unauthorized", 401);
 
-        const body = (await req.json()) as VideoRequest;
+        const body = await readJsonObject<VideoRequest>(req);
+        const supabase = adminClient();
 
         // Status check mode
         if (body.job_id) {
-            const status = await getVideoStatus(body.job_id);
+            const id = jobId(body.job_id);
+            const { data: stored, error } = await supabase
+                .from("video_jobs")
+                .select("job_id")
+                .eq("job_id", id)
+                .eq("user_id", auth.userId)
+                .maybeSingle();
+            if (error) throw new Error(`Video job lookup failed: ${error.message}`);
+            if (!stored) throw new HttpError(404, "Video job not found");
+
+            const status = await getVideoStatus(id);
+            await supabase
+                .from("video_jobs")
+                .update({
+                    status: status.status,
+                    video_url: status.videoUrl ?? null,
+                    error: status.error ?? null,
+                })
+                .eq("job_id", id)
+                .eq("user_id", auth.userId);
             return jsonResponse(status);
         }
 
-        if (!body.topic?.trim()) return errorResponse("topic required", 400);
-
-        const supabase = adminClient();
+        const topic = text(body.topic, "topic", LIMITS.topicChars);
+        const durationSeconds = boundedInt(
+            body.duration_seconds,
+            "duration_seconds",
+            8,
+            4,
+            12,
+        );
+        const chatId = optionalUuid(body.chat_id, "chat_id");
+        const folderId = optionalUuid(
+            body.knowledge_base_folder_id,
+            "knowledge_base_folder_id",
+        );
 
         // Gather context: chat history, KB filenames, web research
         const contextParts: string[] = [];
 
-        if (body.chat_id) {
+        if (chatId) {
             try {
                 const { data: chat } = await supabase
                     .from("chats")
                     .select("messages")
-                    .eq("id", body.chat_id)
+                    .eq("id", chatId)
                     .eq("user_id", auth.userId)
-                    .single();
+                    .maybeSingle();
+                if (!chat) throw new HttpError(404, "Chat not found");
                 const messages = (chat?.messages ?? []) as Array<
                     { role: string; content: string }
                 >;
                 if (messages.length > 0) {
                     const recent = messages.slice(-10).map((m) =>
-                        `${m.role}: ${m.content}`
+                        `${m.role}: ${String(m.content).slice(0, 600)}`
                     ).join("\n");
                     contextParts.push(`Recent chat:\n${recent}`);
                 }
             } catch (e) {
+                if (e instanceof HttpError) throw e;
                 console.warn("Failed to load chat context:", e);
             }
         }
 
-        if (body.knowledge_base_folder_id !== undefined) {
+        if (folderId) {
             try {
-                let q = supabase
+                const { data: folder, error: folderErr } = await supabase
+                    .from("knowledge_base_folders")
+                    .select("id")
+                    .eq("id", folderId)
+                    .eq("user_id", auth.userId)
+                    .maybeSingle();
+                if (folderErr) throw new Error(folderErr.message);
+                if (!folder) throw new HttpError(404, "Knowledge base folder not found");
+
+                const { data: kb } = await supabase
                     .from("knowledge_base_items")
                     .select("filename, mime_type")
-                    .eq("user_id", auth.userId);
-                if (body.knowledge_base_folder_id) {
-                    q = q.eq("folder_id", body.knowledge_base_folder_id);
-                }
-                const { data: kb } = await q.limit(15);
+                    .eq("user_id", auth.userId)
+                    .eq("folder_id", folderId)
+                    .limit(15);
                 if (kb && kb.length > 0) {
                     contextParts.push(
                         `KB files: ${
@@ -85,6 +137,7 @@ serve(async (req) => {
                     );
                 }
             } catch (e) {
+                if (e instanceof HttpError) throw e;
                 console.warn("Failed to load KB context:", e);
             }
         }
@@ -92,7 +145,7 @@ serve(async (req) => {
         if (body.use_web) {
             try {
                 const search = await tavilySearch({
-                    query: body.topic,
+                    query: topic,
                     maxResults: 3,
                     includeAnswer: true,
                 });
@@ -111,7 +164,7 @@ serve(async (req) => {
 
         // Gemini 3.1 Pro generates the video prompt
         const videoPrompt = await generateExplainerPrompt({
-            topic: body.topic,
+            topic,
             context: contextParts.length > 0
                 ? contextParts.join("\n\n")
                 : undefined,
@@ -120,7 +173,14 @@ serve(async (req) => {
         // Kick off Hera
         const job = await startVideoGeneration({
             prompt: videoPrompt,
-            durationSeconds: body.duration_seconds ?? 8,
+            durationSeconds,
+        });
+
+        await supabase.from("video_jobs").insert({
+            job_id: job.jobId,
+            user_id: auth.userId,
+            prompt: videoPrompt,
+            status: "queued",
         });
 
         return jsonResponse({
@@ -131,8 +191,8 @@ serve(async (req) => {
     } catch (err) {
         console.error("generate-video error:", err);
         return errorResponse(
-            err instanceof Error ? err.message : String(err),
-            500,
+            responseMessage(err, "Video request failed"),
+            responseStatus(err),
         );
     }
 });

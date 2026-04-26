@@ -3,13 +3,17 @@
 // for a short-lived session token and returns that to the swift app, which
 // then opens its own websocket to gradium with the token.
 //
-// NOTE: actual gradium endpoint shape needs to be confirmed at venue.
-// This implementation tries a sensible default and exposes the raw API key
-// as a fallback (insecure but demo-acceptable) if the broker endpoint isn't available.
+// Client never receives GRADIUM_API_KEY. If the broker endpoint is unavailable,
+// this function fails closed instead of falling back to a raw server secret.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/supabase.ts";
+import {
+    requirePost,
+    responseMessage,
+    responseStatus,
+} from "../_shared/security.ts";
 
 const GRADIUM_TOKEN_URL = "https://api.gradium.ai/v1/realtime/sessions";
 
@@ -18,50 +22,46 @@ serve(async (req) => {
     if (optionsRes) return optionsRes;
 
     try {
+        requirePost(req);
         const auth = await authenticate(req);
         if (!auth) return errorResponse("Unauthorized", 401);
 
-        const apiKey = Deno.env.get("GRADIUM_API_KEY")!;
+        const apiKey = Deno.env.get("GRADIUM_API_KEY");
+        if (!apiKey) throw new Error("GRADIUM_API_KEY is not set");
 
-        // Try the broker pattern first
-        try {
-            const res = await fetch(GRADIUM_TOKEN_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                    user_id: auth.userId,
-                    expires_in_seconds: 600,
-                }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                return jsonResponse({
-                    mode: "ephemeral",
-                    token: data.token ?? data.session_token ?? data.client_secret,
-                    expires_at: data.expires_at,
-                    websocket_url: data.websocket_url ?? data.ws_url,
-                });
-            }
-        } catch (e) {
-            console.warn("Gradium broker endpoint not available:", e);
+        const res = await fetch(GRADIUM_TOKEN_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                user_id: auth.userId,
+                expires_in_seconds: 600,
+            }),
+        });
+        if (!res.ok) {
+            console.error("Gradium broker failed:", res.status, await res.text());
+            return errorResponse("Voice token broker unavailable", 502);
         }
 
-        // Fallback: hand back raw key (hackathon-acceptable; replace once docs confirmed)
+        const data = await res.json();
+        const token = data.token ?? data.session_token ?? data.client_secret;
+        if (typeof token !== "string" || token.length === 0) {
+            console.error("Gradium broker returned no client token:", data);
+            return errorResponse("Voice token broker returned no token", 502);
+        }
         return jsonResponse({
-            mode: "raw",
-            token: apiKey,
-            websocket_url: null,
-            note:
-                "Gradium broker endpoint unavailable; using raw key (hackathon-only fallback).",
+            mode: "ephemeral",
+            token,
+            expires_at: data.expires_at,
+            websocket_url: data.websocket_url ?? data.ws_url,
         });
     } catch (err) {
         console.error("voice-token error:", err);
         return errorResponse(
-            err instanceof Error ? err.message : String(err),
-            500,
+            responseMessage(err, "Voice token request failed"),
+            responseStatus(err),
         );
     }
 });

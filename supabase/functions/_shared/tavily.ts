@@ -12,7 +12,8 @@ export async function tavilySearch(params: {
     includeAnswer?: boolean;
     timeRange?: "day" | "week" | "month" | "year";
 }): Promise<{ answer?: string; results: TavilyResult[] }> {
-    const apiKey = Deno.env.get("TAVILY_API_KEY")!;
+    const apiKey = Deno.env.get("TAVILY_API_KEY");
+    if (!apiKey) throw new Error("TAVILY_API_KEY is not set");
 
     const body: Record<string, unknown> = {
         query: params.query,
@@ -45,7 +46,8 @@ export async function tavilyExtract(params: {
     urls: string[];
     extractDepth?: "basic" | "advanced";
 }): Promise<Array<{ url: string; rawContent: string }>> {
-    const apiKey = Deno.env.get("TAVILY_API_KEY")!;
+    const apiKey = Deno.env.get("TAVILY_API_KEY");
+    if (!apiKey) throw new Error("TAVILY_API_KEY is not set");
     const res = await fetch("https://api.tavily.com/extract", {
         method: "POST",
         headers: {

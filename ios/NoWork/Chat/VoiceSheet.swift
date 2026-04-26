@@ -68,20 +68,25 @@ struct KBFolderPickerSheet: View {
                 if isLoading {
                     HStack { Spacer(); ProgressView(); Spacer() }
                 } else {
-                    ForEach(folders) { folder in
+                    ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
                         Button {
                             selectedId = folder.id
                             dismiss()
                         } label: {
-                            HStack {
-                                Label(folder.name, systemImage: "folder")
-                                if folder.isDefault {
-                                    Text("default")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                            HStack(spacing: 12) {
+                                Image(systemName: "folder.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(KnowledgeBaseFolder.color(at: index).gradient)
+                                    .frame(width: 28)
+                                Text(folder.name)
                                 Spacer()
-                                if selectedId == folder.id { Image(systemName: "checkmark") }
+                                if folder.isDefault {
+                                    Image(systemName: "star.fill")
+                                        .foregroundStyle(.yellow)
+                                }
+                                if selectedId == folder.id {
+                                    Image(systemName: "checkmark")
+                                }
                             }
                         }
                     }

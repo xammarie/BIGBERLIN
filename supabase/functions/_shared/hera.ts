@@ -16,7 +16,8 @@ export async function startVideoGeneration(params: {
     durationSeconds?: number;
     resolution?: "720p" | "1080p";
 }): Promise<{ jobId: string }> {
-    const apiKey = Deno.env.get("HERA_API_KEY")!;
+    const apiKey = Deno.env.get("HERA_API_KEY");
+    if (!apiKey) throw new Error("HERA_API_KEY is not set");
     const res = await fetch(`${HERA_BASE}/videos`, {
         method: "POST",
         headers: {
@@ -33,11 +34,16 @@ export async function startVideoGeneration(params: {
         throw new Error(`Hera start failed: ${await res.text()}`);
     }
     const data = await res.json();
-    return { jobId: data.id ?? data.job_id ?? data.jobId };
+    const jobId = data.id ?? data.job_id ?? data.jobId;
+    if (typeof jobId !== "string" || jobId.length === 0) {
+        throw new Error("Hera start returned no job id");
+    }
+    return { jobId };
 }
 
 export async function getVideoStatus(jobId: string): Promise<HeraVideoJob> {
-    const apiKey = Deno.env.get("HERA_API_KEY")!;
+    const apiKey = Deno.env.get("HERA_API_KEY");
+    if (!apiKey) throw new Error("HERA_API_KEY is not set");
     const res = await fetch(`${HERA_BASE}/videos/${jobId}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
     });

@@ -13,9 +13,22 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorResponse, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { adminClient, authenticate } from "../_shared/supabase.ts";
-import { chatTurn, ChatMessage, GEMINI_FLASH } from "../_shared/gemini.ts";
+import { chatTurn, ChatMessage, ModelMode } from "../_shared/gemini.ts";
 import { tavilySearch } from "../_shared/tavily.ts";
 import { blobToBase64, inferMimeFromPath } from "../_shared/utils.ts";
+import {
+    enumValue,
+    HttpError,
+    LIMITS,
+    optionalUuid,
+    readJsonObject,
+    requireBlobSize,
+    requirePost,
+    responseMessage,
+    responseStatus,
+    text,
+    userStoragePathArray,
+} from "../_shared/security.ts";
 
 const SYSTEM_PROMPT =
     `You are NoWork, a homework copilot tutor. The student is working on worksheets and notes.
@@ -30,6 +43,7 @@ interface ChatRequest {
     knowledge_base_folder_id?: string;
     attachment_paths?: string[];
     session_id?: string;
+    model?: ModelMode;
 }
 
 interface StoredMessage {
@@ -44,17 +58,61 @@ serve(async (req) => {
     if (optionsRes) return optionsRes;
 
     try {
+        requirePost(req);
         const auth = await authenticate(req);
         if (!auth) return errorResponse("Unauthorized", 401);
 
-        const body = (await req.json()) as ChatRequest;
-        if (!body.message?.trim() && !(body.attachment_paths?.length)) {
-            return errorResponse("message or attachments required", 400);
+        const body = await readJsonObject<ChatRequest>(req);
+        const message = text(body.message ?? "", "message", LIMITS.chatMessageChars, {
+            required: false,
+        });
+        const attachmentPaths = userStoragePathArray(
+            body.attachment_paths,
+            auth.userId,
+            "attachment_paths",
+            LIMITS.attachmentImages,
+        );
+        if (!message && attachmentPaths.length === 0) {
+            throw new HttpError(400, "message or attachments required");
         }
+        const model = enumValue<ModelMode>(
+            body.model,
+            "model",
+            ["fast", "smart"] as const,
+            "fast",
+        );
+        const requestedChatId = optionalUuid(body.chat_id, "chat_id");
+        const requestedSessionId = optionalUuid(body.session_id, "session_id");
+        const requestedFolderId = optionalUuid(
+            body.knowledge_base_folder_id,
+            "knowledge_base_folder_id",
+        );
 
         const supabase = adminClient();
 
-        let chatId = body.chat_id;
+        if (requestedSessionId) {
+            const { data: session, error } = await supabase
+                .from("sessions")
+                .select("id")
+                .eq("id", requestedSessionId)
+                .eq("user_id", auth.userId)
+                .maybeSingle();
+            if (error) throw new Error(`Session lookup failed: ${error.message}`);
+            if (!session) throw new HttpError(404, "Session not found");
+        }
+
+        if (requestedFolderId) {
+            const { data: folder, error } = await supabase
+                .from("knowledge_base_folders")
+                .select("id")
+                .eq("id", requestedFolderId)
+                .eq("user_id", auth.userId)
+                .maybeSingle();
+            if (error) throw new Error(`Folder lookup failed: ${error.message}`);
+            if (!folder) throw new HttpError(404, "Knowledge base folder not found");
+        }
+
+        let chatId = requestedChatId;
         let history: StoredMessage[] = [];
 
         if (chatId) {
@@ -65,35 +123,36 @@ serve(async (req) => {
                 .eq("user_id", auth.userId)
                 .single();
             if (error || !data) return errorResponse("Chat not found", 404);
-            history = (data.messages as StoredMessage[]) ?? [];
+            history = normalizeHistory(data.messages);
         } else {
             const { data, error } = await supabase
                 .from("chats")
                 .insert({
                     user_id: auth.userId,
-                    session_id: body.session_id ?? null,
-                    knowledge_base_folder_id: body.knowledge_base_folder_id ?? null,
-                    title: titleFromMessage(body.message),
+                    session_id: requestedSessionId ?? null,
+                    knowledge_base_folder_id: requestedFolderId ?? null,
+                    title: titleFromMessage(message),
                     messages: [],
                 })
                 .select("id")
                 .single();
-            if (error || !data) return errorResponse("Failed to create chat", 500);
+            if (error || !data) {
+                console.error("Failed to create chat:", error);
+                return errorResponse("Failed to create chat", 500);
+            }
             chatId = data.id as string;
         }
 
-        // KB context: pull file metadata for the selected folder (or all user files if no folder)
+        // KB context: only when a concrete, owned folder is selected.
         let kbContext: string | undefined;
-        if (body.knowledge_base_folder_id !== undefined) {
+        if (requestedFolderId) {
             try {
-                let q = supabase
+                const { data: kb } = await supabase
                     .from("knowledge_base_items")
                     .select("filename, mime_type, metadata")
-                    .eq("user_id", auth.userId);
-                if (body.knowledge_base_folder_id) {
-                    q = q.eq("folder_id", body.knowledge_base_folder_id);
-                }
-                const { data: kb } = await q.limit(20);
+                    .eq("user_id", auth.userId)
+                    .eq("folder_id", requestedFolderId)
+                    .limit(20);
                 if (kb && kb.length > 0) {
                     kbContext = kb.map((k: any) =>
                         `- ${k.filename}${k.mime_type ? ` (${k.mime_type})` : ""}`
@@ -106,10 +165,10 @@ serve(async (req) => {
 
         // Web research
         let webContext: string | undefined;
-        if (body.use_web) {
+        if (body.use_web && message) {
             try {
                 const search = await tavilySearch({
-                    query: body.message,
+                    query: message,
                     maxResults: 4,
                     includeAnswer: true,
                 });
@@ -126,49 +185,53 @@ serve(async (req) => {
 
         // Attachment images: download from storage and base64 for vision
         const attachmentImages: { base64: string; mimeType: string }[] = [];
-        if (body.attachment_paths?.length) {
-            for (const path of body.attachment_paths) {
-                try {
-                    const { data, error } = await supabase.storage
-                        .from("worksheets-input")
-                        .download(path);
-                    if (error || !data) continue;
-                    attachmentImages.push({
-                        base64: await blobToBase64(data),
-                        mimeType: inferMimeFromPath(path),
-                    });
-                } catch (e) {
-                    console.warn(`Failed to fetch attachment ${path}:`, e);
+        if (attachmentPaths.length) {
+            for (const ownedAttachmentPath of attachmentPaths) {
+                const { data, error } = await supabase.storage
+                    .from("worksheets-input")
+                    .download(ownedAttachmentPath);
+                if (error || !data) {
+                    console.warn(
+                        `Failed to fetch attachment ${ownedAttachmentPath}:`,
+                        error,
+                    );
+                    throw new HttpError(400, "Attachment could not be loaded");
                 }
+                requireBlobSize(data, "attachment image");
+                attachmentImages.push({
+                    base64: await blobToBase64(data),
+                    mimeType: inferMimeFromPath(ownedAttachmentPath),
+                });
             }
         }
 
-        const geminiHistory: ChatMessage[] = history.map((m) => ({
+        const historyForModel = history.slice(-LIMITS.chatHistoryMessages);
+        const geminiHistory: ChatMessage[] = historyForModel.map((m) => ({
             role: m.role === "assistant" ? "model" : "user",
-            content: m.content,
+            content: m.content.slice(0, LIMITS.chatMessageChars),
         }));
 
         const reply = await chatTurn({
             history: geminiHistory,
-            userMessage: body.message,
+            userMessage: message,
             systemPrompt: SYSTEM_PROMPT,
             webContext,
             kbContext,
             contextFiles: attachmentImages.length > 0 ? attachmentImages : undefined,
-            model: GEMINI_FLASH,
+            model,
         });
 
         const now = new Date().toISOString();
-        const newHistory: StoredMessage[] = [
+        const newHistory: StoredMessage[] = ([
             ...history,
             {
                 role: "user",
-                content: body.message,
+                content: message,
                 timestamp: now,
-                attachment_paths: body.attachment_paths,
+                attachment_paths: attachmentPaths.length ? attachmentPaths : undefined,
             },
             { role: "assistant", content: reply, timestamp: now },
-        ];
+        ]).slice(-LIMITS.storedChatMessages);
 
         await supabase
             .from("chats")
@@ -186,8 +249,8 @@ serve(async (req) => {
     } catch (err) {
         console.error("chat error:", err);
         return errorResponse(
-            err instanceof Error ? err.message : String(err),
-            500,
+            responseMessage(err, "Chat request failed"),
+            responseStatus(err),
         );
     }
 });
@@ -196,4 +259,30 @@ function titleFromMessage(msg: string): string {
     const firstLine = msg.split("\n")[0].trim();
     if (firstLine.length <= 50) return firstLine;
     return firstLine.slice(0, 47) + "…";
+}
+
+function normalizeHistory(value: unknown): StoredMessage[] {
+    if (!Array.isArray(value)) return [];
+    const normalized: StoredMessage[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") continue;
+        const m = item as Partial<StoredMessage>;
+        if (
+            (m.role !== "user" && m.role !== "assistant") ||
+            typeof m.content !== "string"
+        ) {
+            continue;
+        }
+        normalized.push({
+            role: m.role,
+            content: m.content.slice(0, LIMITS.chatMessageChars),
+            timestamp: typeof m.timestamp === "string"
+                ? m.timestamp
+                : new Date().toISOString(),
+            attachment_paths: Array.isArray(m.attachment_paths)
+                ? m.attachment_paths.filter((p) => typeof p === "string")
+                : undefined,
+        });
+    }
+    return normalized.slice(-LIMITS.storedChatMessages);
 }

@@ -38,10 +38,11 @@ struct AddFolderItemsView: View {
     }
 
     private func upload(items: [PhotosPickerItem]) async {
+        guard !isUploading else { return }
         isUploading = true
         defer { isUploading = false }
         do {
-            for item in items {
+            for item in items.prefix(10) {
                 guard let data = try await item.loadTransferable(type: Data.self),
                       let img = UIImage(data: data) else { continue }
                 let path = try await StorageService.shared.upload(image: img, bucket: .kbFiles)

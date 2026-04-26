@@ -95,9 +95,16 @@ struct AddHandwritingView: View {
         isSaving = true
         defer { isSaving = false }
         do {
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedName.isEmpty, trimmedName.count <= 80 else {
+                throw NSError(domain: "AddHandwriting", code: 0, userInfo: [NSLocalizedDescriptionKey: "name must be 1-80 characters"])
+            }
             let image: UIImage
             switch mode {
             case .draw:
+                guard !canvasView.drawing.bounds.isEmpty else {
+                    throw NSError(domain: "AddHandwriting", code: 0, userInfo: [NSLocalizedDescriptionKey: "write a sample first"])
+                }
                 image = canvasView.drawing.image(
                     from: CGRect(origin: .zero, size: CGSize(width: 1024, height: 256)),
                     scale: 2.0
@@ -130,7 +137,7 @@ struct AddHandwritingView: View {
 
             let new = New(
                 user_id: userId.uuidString.lowercased(),
-                name: name.trimmingCharacters(in: .whitespaces),
+                name: trimmedName,
                 storage_path: path,
                 is_default: isFirst
             )

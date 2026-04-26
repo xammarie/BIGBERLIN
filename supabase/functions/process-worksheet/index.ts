@@ -15,6 +15,17 @@ import { reasonOverWorksheet } from "../_shared/gemini.ts";
 import { editWorksheetImage } from "../_shared/openai.ts";
 import { ActionType, HandwritingMode } from "../_shared/prompts.ts";
 import { blobToBase64, inferMimeFromPath } from "../_shared/utils.ts";
+import {
+    HttpError,
+    LIMITS,
+    readJsonObject,
+    requireBlobSize,
+    requirePost,
+    responseMessage,
+    responseStatus,
+    sanitizeStoragePathForUser,
+    uuid,
+} from "../_shared/security.ts";
 
 interface ProcessRequest {
     session_id: string;
@@ -25,11 +36,14 @@ serve(async (req) => {
     if (optionsRes) return optionsRes;
 
     try {
+        requirePost(req);
         const auth = await authenticate(req);
         if (!auth) return errorResponse("Unauthorized", 401);
 
-        const { session_id } = (await req.json()) as ProcessRequest;
-        if (!session_id) return errorResponse("session_id required", 400);
+        const { session_id: rawSessionId } = await readJsonObject<ProcessRequest>(
+            req,
+        );
+        const session_id = uuid(rawSessionId, "session_id");
 
         const supabase = adminClient();
 
@@ -45,7 +59,10 @@ serve(async (req) => {
             .eq("user_id", auth.userId)
             .maybeSingle();
 
-        if (sessionErr) return errorResponse(sessionErr.message, 500);
+        if (sessionErr) {
+            console.error("Failed to load session:", sessionErr);
+            return errorResponse("Failed to load session", 500);
+        }
         if (!session) return errorResponse("Session not found", 404);
         if (session.status === "processing" || session.status === "complete") {
             return jsonResponse({ status: session.status, session_id });
@@ -55,7 +72,7 @@ serve(async (req) => {
         await supabase.from("sessions").update({ status: "processing" }).eq(
             "id",
             session_id,
-        );
+        ).eq("user_id", auth.userId);
 
         // Run the pipeline in background
         // @ts-ignore EdgeRuntime is available in supabase edge functions
@@ -65,14 +82,19 @@ serve(async (req) => {
     } catch (err) {
         console.error("process-worksheet error:", err);
         return errorResponse(
-            err instanceof Error ? err.message : String(err),
-            500,
+            responseMessage(err, "Failed to start worksheet processing"),
+            responseStatus(err),
         );
     }
 });
 
 async function runPipeline(sessionId: string, userId: string): Promise<void> {
     const supabase = adminClient();
+    const t0 = Date.now();
+    const stamp = (label: string) => {
+        console.log(`[pipeline ${sessionId}] +${Date.now() - t0}ms ${label}`);
+    };
+    stamp("start");
 
     try {
         // Re-fetch with full data
@@ -81,39 +103,49 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             .select(
                 `id, user_id, action, mode, handwriting_sample_id,
                  session_inputs(id, storage_path, "order"),
-                 handwriting_samples(id, storage_path, name)`,
+                 handwriting_samples(id, user_id, storage_path, name)`,
             )
             .eq("id", sessionId)
+            .eq("user_id", userId)
             .single();
 
         if (error || !session) {
             throw new Error(`Failed to load session: ${error?.message}`);
         }
 
-        const action = session.action as ActionType;
-        const mode = session.mode as HandwritingMode;
+        const action = assertAction(session.action);
+        const mode = assertMode(session.mode);
         const inputs = (session.session_inputs as any[])
             .sort((a, b) => a.order - b.order);
 
         if (inputs.length === 0) throw new Error("No inputs");
+        if (inputs.length > LIMITS.worksheetImages) {
+            throw new HttpError(400, "Too many worksheet images");
+        }
 
         // Download all input images
         const downloadedInputs = await Promise.all(
             inputs.map(async (input) => {
+                const ownedWorksheetPath = sanitizeStoragePathForUser(
+                    input.storage_path,
+                    userId,
+                    "worksheet input path",
+                );
                 const { data, error: dlErr } = await supabase.storage
                     .from("worksheets-input")
-                    .download(input.storage_path);
+                    .download(ownedWorksheetPath);
                 if (dlErr || !data) {
                     throw new Error(
                         `Failed to download input ${input.id}: ${dlErr?.message}`,
                     );
                 }
+                requireBlobSize(data, "worksheet image");
                 const base64 = await blobToBase64(data);
                 return {
                     id: input.id,
                     blob: data,
                     base64,
-                    mimeType: inferMimeFromPath(input.storage_path),
+                    mimeType: inferMimeFromPath(ownedWorksheetPath),
                 };
             }),
         );
@@ -127,21 +159,33 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
                     "Library mode requires a handwriting_sample_id on the session",
                 );
             }
+            if (sampleData.user_id !== userId) {
+                throw new HttpError(403, "Handwriting sample is not owned by the current user");
+            }
+            const ownedSamplePath = sanitizeStoragePathForUser(
+                sampleData.storage_path,
+                userId,
+                "handwriting sample path",
+            );
             const { data, error: dlErr } = await supabase.storage
                 .from("handwriting")
-                .download(sampleData.storage_path);
+                .download(ownedSamplePath);
             if (dlErr || !data) {
                 throw new Error(
                     `Failed to download handwriting sample: ${dlErr?.message}`,
                 );
             }
+            requireBlobSize(data, "handwriting sample");
             sample = {
                 blob: data,
-                mimeType: inferMimeFromPath(sampleData.storage_path),
+                mimeType: inferMimeFromPath(ownedSamplePath),
             };
         }
 
+        stamp(`downloads done (${downloadedInputs.length} inputs, sample=${sample ? "yes" : "no"})`);
+
         // Joint reasoning over all inputs
+        stamp("calling reasonOverWorksheet (gemini)");
         const reasoning = await reasonOverWorksheet({
             images: downloadedInputs.map((i) => ({
                 base64: i.base64,
@@ -150,29 +194,34 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             action,
             mode,
         });
+        stamp(`reasoning done — ${reasoning.images?.length ?? 0} prompts`);
 
         if (!reasoning.images?.length) {
             throw new Error("Gemini returned no per-image prompts");
         }
+        const promptByIndex = validatedPrompts(reasoning, downloadedInputs.length);
 
-        // Sequential per-image dispatch to gpt-image-2
+        // Sequential per-image dispatch to image-edit model
         for (let i = 0; i < downloadedInputs.length; i++) {
             const input = downloadedInputs[i];
-            const promptObj = reasoning.images.find((p) => p.index === i);
-            if (!promptObj) {
-                console.warn(`No prompt for index ${i}, skipping`);
-                continue;
-            }
+            const prompt = promptByIndex[i];
 
+            stamp(`editWorksheetImage start (i=${i})`);
             const edited = await editWorksheetImage({
                 worksheet: input.blob,
                 worksheetName: `input-${i}.png`,
-                prompt: promptObj.standalone_prompt,
+                prompt,
                 handwritingSample: sample?.blob,
                 handwritingSampleName: "handwriting_sample.png",
             });
+            requireBlobSize(edited, "edited worksheet image");
+            stamp(`editWorksheetImage done (i=${i}, bytes=${edited.size})`);
 
-            const outputPath = `${userId}/${sessionId}/${i}-${Date.now()}.png`;
+            const outputPath = sanitizeStoragePathForUser(
+                `${userId}/${sessionId}/${i}-${Date.now()}.png`,
+                userId,
+                "worksheet output path",
+            );
             const { error: uploadErr } = await supabase.storage
                 .from("worksheets-output")
                 .upload(outputPath, edited, {
@@ -182,26 +231,94 @@ async function runPipeline(sessionId: string, userId: string): Promise<void> {
             if (uploadErr) {
                 throw new Error(`Upload failed: ${uploadErr.message}`);
             }
+            stamp(`upload done (i=${i})`);
 
             await supabase.from("session_outputs").insert({
                 session_id: sessionId,
                 source_input_id: input.id,
                 storage_path: outputPath,
-                prompt_used: promptObj.standalone_prompt,
+                prompt_used: prompt,
             });
+            stamp(`db insert done (i=${i})`);
         }
 
         await supabase.from("sessions").update({
             status: "complete",
             completed_at: new Date().toISOString(),
-        }).eq("id", sessionId);
+        }).eq("id", sessionId).eq("user_id", userId);
+        stamp("session marked complete");
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`Pipeline failed for ${sessionId}:`, message);
+        const internalMessage = err instanceof Error ? err.message : String(err);
+        const publicMessage = pipelinePublicMessage(err);
+        console.error(`Pipeline failed for ${sessionId}:`, internalMessage);
         await supabase.from("sessions").update({
             status: "failed",
-            error: message,
+            error: publicMessage,
             completed_at: new Date().toISOString(),
-        }).eq("id", sessionId);
+        }).eq("id", sessionId).eq("user_id", userId);
     }
+}
+
+function assertAction(value: unknown): ActionType {
+    const allowed: ActionType[] = [
+        "correct",
+        "complete",
+        "fill_out",
+        "annotate",
+        "schrift_replace",
+    ];
+    if (typeof value !== "string" || !allowed.includes(value as ActionType)) {
+        throw new HttpError(400, "Unsupported worksheet action");
+    }
+    return value as ActionType;
+}
+
+function assertMode(value: unknown): HandwritingMode {
+    if (value !== "library" && value !== "adaptive") {
+        throw new HttpError(400, "Unsupported handwriting mode");
+    }
+    return value;
+}
+
+function validatedPrompts(
+    reasoning: { images?: { index: number; standalone_prompt: string }[] },
+    expectedCount: number,
+): string[] {
+    const prompts = Array<string>(expectedCount).fill("");
+    const seen = new Set<number>();
+    for (const item of reasoning.images ?? []) {
+        if (!Number.isInteger(item.index) || item.index < 0 || item.index >= expectedCount) {
+            throw new Error("Gemini returned a prompt with an invalid image index");
+        }
+        if (seen.has(item.index)) {
+            throw new Error("Gemini returned duplicate prompts for one image");
+        }
+        const prompt = item.standalone_prompt?.trim();
+        if (!prompt) throw new Error("Gemini returned an empty image prompt");
+        if (prompt.length > LIMITS.promptChars) {
+            throw new Error("Gemini returned an oversized image prompt");
+        }
+        seen.add(item.index);
+        prompts[item.index] = prompt;
+    }
+    if (seen.size !== expectedCount || prompts.some((prompt) => !prompt)) {
+        throw new Error("Gemini did not return one prompt for every worksheet image");
+    }
+    return prompts;
+}
+
+function pipelinePublicMessage(err: unknown): string {
+    if (err instanceof HttpError) return err.message;
+    const message = err instanceof Error ? err.message : String(err);
+    const safePrefixes = [
+        "No inputs",
+        "Library mode requires",
+        "Gemini returned",
+        "Gemini did not",
+        "Unsupported",
+    ];
+    if (safePrefixes.some((prefix) => message.startsWith(prefix))) {
+        return message;
+    }
+    return "Worksheet processing failed. Please retry with a smaller, clearer image.";
 }

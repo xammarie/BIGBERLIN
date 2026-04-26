@@ -59,9 +59,40 @@ enum WorksheetAction: String, Codable, CaseIterable, Identifiable {
         default: return true
         }
     }
+
+    /// True if this action renders handwriting (and therefore needs a sample in library mode).
+    /// Correct/annotate just mark the worksheet — they don't need a sample.
+    var rendersNewHandwriting: Bool {
+        switch self {
+        case .complete, .fillOut, .schriftReplace: return true
+        case .correct, .annotate, .explainVideo: return false
+        }
+    }
 }
 
 enum HandwritingMode: String, Codable {
     case library
     case adaptive
+}
+
+/// Which Gemini model the chat / reasoning runs against.
+/// `fast` = `google/gemini-3.1-flash-lite-preview` (cheap, snappy)
+/// `smart` = `google/gemini-3.1-pro-preview` (deeper thinking)
+enum ModelMode: String, Codable, CaseIterable {
+    case fast
+    case smart
+
+    var displayName: String {
+        switch self {
+        case .fast: return "Fast"
+        case .smart: return "Smart"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .fast: return "bolt.fill"
+        case .smart: return "sparkles"
+        }
+    }
 }

@@ -65,6 +65,21 @@ struct PromptBar: View {
                         )
                     }
 
+                    Menu {
+                        ForEach(ModelMode.allCases, id: \.self) { mode in
+                            Button {
+                                vm.modelMode = mode
+                            } label: {
+                                Label(mode.displayName, systemImage: mode.systemImage)
+                            }
+                        }
+                    } label: {
+                        ToolIcon(
+                            systemName: vm.modelMode.systemImage,
+                            active: vm.modelMode == .smart
+                        )
+                    }
+
                     Spacer()
 
                     Button { showVoice = true } label: {
@@ -77,11 +92,14 @@ struct PromptBar: View {
                     } label: {
                         Image(systemName: vm.isWorking ? "ellipsis" : "arrow.up")
                             .font(.headline)
-                            .foregroundStyle(canSend ? Color.white : Color.secondary)
+                            .foregroundStyle(canSend ? Color.white : Color.primary.opacity(0.6))
                             .frame(width: 38, height: 38)
-                            .background(
-                                Circle().fill(canSend ? Color.accentColor : Color(.tertiarySystemFill))
-                            )
+                            .background {
+                                if canSend {
+                                    Circle().fill(Color.accentColor)
+                                }
+                            }
+                            .glassEffect(in: .circle)
                     }
                     .disabled(!canSend)
                     .animation(.snappy(duration: 0.18), value: canSend)
@@ -89,14 +107,7 @@ struct PromptBar: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 10)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-            )
+            .glassEffect(in: .rect(cornerRadius: 28, style: .continuous))
         }
         .sheet(isPresented: $showVoice) {
             VoiceSheet(vm: vm)
@@ -131,9 +142,10 @@ struct ToolIcon: View {
             .font(.subheadline)
             .frame(width: 36, height: 36)
             .foregroundStyle(active ? Color.white : Color.primary.opacity(0.75))
-            .background(
-                Circle()
-                    .fill(active ? Color.accentColor : Color.clear)
-            )
+            .background {
+                if active {
+                    Circle().fill(Color.accentColor)
+                }
+            }
     }
 }

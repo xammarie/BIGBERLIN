@@ -86,7 +86,7 @@ supabase functions deploy generate-video
 
 API keys are stored as Supabase secrets — set via:
 ```bash
-supabase secrets set OPENAI_API_KEY=... GOOGLE_API_KEY=... TAVILY_API_KEY=... \
+supabase secrets set OPENROUTER_API_KEY=... TAVILY_API_KEY=... \
                     GRADIUM_API_KEY=... HERA_API_KEY=...
 ```
 

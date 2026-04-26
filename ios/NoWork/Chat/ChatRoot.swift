@@ -10,17 +10,23 @@ struct ChatRoot: View {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
 
-                VStack(spacing: 0) {
+                Group {
                     if vm.messages.isEmpty {
                         EmptyHome(vm: vm)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         MessagesScroll(vm: vm)
                     }
-
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
                     PromptBar(vm: vm, inputFocused: $inputFocused)
                         .padding(.horizontal, 14)
+                        .padding(.top, 6)
                         .padding(.bottom, 10)
+                        .background(
+                            Color(.systemBackground)
+                                .opacity(inputFocused ? 1 : 0)
+                        )
                 }
             }
             .toolbar {
@@ -28,24 +34,26 @@ struct ChatRoot: View {
                     Button { showSidebar = true } label: {
                         Image(systemName: "line.3.horizontal")
                             .font(.headline)
-                            .frame(width: 38, height: 38)
-                            .glassEffect(in: .circle)
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("NoWork")
-                        .font(.system(.headline, design: .rounded, weight: .semibold))
+                    HStack(spacing: 8) {
+                        Image("Logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 26, height: 26)
+                            .clipShape(.rect(cornerRadius: 6, style: .continuous))
+                        Text("NoWork")
+                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { startNewChat() } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.headline)
-                            .frame(width: 38, height: 38)
-                            .glassEffect(in: .circle)
                     }
                 }
             }
-            .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $showSidebar) {
                 SidebarView { chatId in
                     showSidebar = false
@@ -69,73 +77,64 @@ struct ChatRoot: View {
     }
 
     private func loadExistingChat(id: UUID) {
-        vm.chatId = id
         vm.messages = []
-        Task { @MainActor in
-            do {
-                struct Row: Codable {
-                    let messages: [Stored]?
-                }
-                struct Stored: Codable {
-                    let role: String
-                    let content: String
-                    let attachment_paths: [String]?
-                }
-                let row: Row = try await SupabaseService.shared.client
-                    .from("chats")
-                    .select("messages")
-                    .eq("id", value: id.uuidString.lowercased())
-                    .single()
-                    .execute()
-                    .value
-                vm.messages = (row.messages ?? []).map { m in
-                    if m.role == "user" {
-                        return .userText(id: UUID(), text: m.content, attachmentPaths: m.attachment_paths ?? [])
-                    } else {
-                        return .assistantText(id: UUID(), text: m.content)
-                    }
-                }
-            } catch {
-                vm.error = error.localizedDescription
-            }
-        }
+        Task { await vm.loadChat(id) }
     }
 }
 
 struct EmptyHome: View {
     @ObservedObject var vm: ChatViewModel
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    private var isWide: Bool { hSize == .regular }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: isWide ? .center : .leading, spacing: 28) {
             Spacer().frame(height: 8)
 
-            Text("What do you want\nto NoWork on?")
+            Text(isWide ? "What do you want to NoWork on?" : "What do you want\nto NoWork on?")
                 .font(.system(.largeTitle, design: .serif, weight: .semibold))
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(isWide ? .center : .leading)
+                .lineLimit(isWide ? 1 : nil)
+                .minimumScaleFactor(isWide ? 0.7 : 1)
+                .frame(maxWidth: .infinity, alignment: isWide ? .center : .leading)
                 .padding(.horizontal, 24)
                 .padding(.top, 8)
 
-            FlowLayout(spacing: 10) {
-                ForEach(WorksheetAction.allCases) { action in
-                    ActionChip(
-                        action: action,
-                        isSelected: vm.pendingAction == action
-                    ) {
-                        vm.toggleAction(action)
-                    }
-                }
-            }
-            .padding(.horizontal, 18)
+            chipsContainer
 
             if let err = vm.error {
                 Text(err)
                     .font(.footnote)
                     .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: isWide ? .center : .leading)
                     .padding(.horizontal, 24)
             }
 
             Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var chipsContainer: some View {
+        let chips = FlowLayout(spacing: 10, alignment: isWide ? .center : .leading) {
+            ForEach(WorksheetAction.allCases) { action in
+                ActionChip(
+                    action: action,
+                    isSelected: vm.pendingAction == action
+                ) {
+                    vm.toggleAction(action)
+                }
+            }
+        }
+
+        if isWide {
+            chips
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 18)
+        } else {
+            chips.padding(.horizontal, 18)
         }
     }
 }
@@ -157,16 +156,11 @@ struct ActionChip: View {
             .padding(.vertical, 14)
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(isSelected ? Color.accentColor : Color(.secondarySystemBackground))
+                if isSelected {
+                    Capsule().fill(Color.accentColor)
+                }
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? Color.clear : Color.primary.opacity(0.08),
-                        lineWidth: 1
-                    )
-            }
+            .glassEffect(in: .capsule)
         }
         .buttonStyle(.plain)
         .animation(.snappy(duration: 0.18), value: isSelected)
@@ -174,14 +168,16 @@ struct ActionChip: View {
 }
 
 /// Wraps chips in lines like the wireframe: each chip takes its content width,
-/// flowing to the next line when it doesn't fit.
+/// flowing to the next line when it doesn't fit. Each row is independently
+/// aligned (leading or center) within the container width.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
+    var alignment: HorizontalAlignment = .leading
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         let arranged = arrange(maxWidth: maxWidth, subviews: subviews)
-        return CGSize(width: maxWidth.isFinite ? maxWidth : arranged.width, height: arranged.height)
+        return CGSize(width: maxWidth.isFinite ? maxWidth : arranged.contentWidth, height: arranged.height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
@@ -194,25 +190,60 @@ struct FlowLayout: Layout {
         }
     }
 
-    private func arrange(maxWidth: CGFloat, subviews: Subviews) -> (frames: [CGRect], width: CGFloat, height: CGFloat) {
-        var frames: [CGRect] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
 
-        for subview in subviews {
+    private func arrange(
+        maxWidth: CGFloat,
+        subviews: Subviews
+    ) -> (frames: [CGRect], contentWidth: CGFloat, height: CGFloat) {
+        var rows: [Row] = [Row()]
+        var sizes: [CGSize] = []
+
+        for (index, subview) in subviews.enumerated() {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
+            sizes.append(size)
+            let prospectiveWidth = rows[rows.count - 1].width
+                + (rows[rows.count - 1].indices.isEmpty ? 0 : spacing)
+                + size.width
+            if prospectiveWidth > maxWidth, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
             }
-            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+            let i = rows.count - 1
+            if !rows[i].indices.isEmpty { rows[i].width += spacing }
+            rows[i].indices.append(index)
+            rows[i].width += size.width
+            rows[i].height = max(rows[i].height, size.height)
         }
 
-        return (frames, maxWidth.isFinite ? maxWidth : x, y + rowHeight)
+        var frames: [CGRect] = Array(repeating: .zero, count: subviews.count)
+        var y: CGFloat = 0
+        var contentWidth: CGFloat = 0
+        for (idx, row) in rows.enumerated() {
+            let startX: CGFloat
+            switch alignment {
+            case .center:
+                startX = max(0, (maxWidth - row.width) / 2)
+            case .trailing:
+                startX = max(0, maxWidth - row.width)
+            default:
+                startX = 0
+            }
+            var x: CGFloat = startX
+            for (k, sIdx) in row.indices.enumerated() {
+                if k > 0 { x += spacing }
+                frames[sIdx] = CGRect(origin: CGPoint(x: x, y: y), size: sizes[sIdx])
+                x += sizes[sIdx].width
+            }
+            contentWidth = max(contentWidth, row.width)
+            y += row.height
+            if idx < rows.count - 1 { y += spacing }
+        }
+
+        return (frames, contentWidth, y)
     }
 }
 

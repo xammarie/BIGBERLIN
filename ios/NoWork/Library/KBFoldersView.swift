@@ -5,42 +5,53 @@ struct KBFoldersView: View {
     @State private var showCreate = false
     @State private var newFolderName = ""
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 18),
+        GridItem(.flexible(), spacing: 18),
+        GridItem(.flexible(), spacing: 18),
+    ]
+
     var body: some View {
-        List {
+        Group {
             if vm.folders.isEmpty {
                 ContentUnavailableView(
                     "no folders yet",
                     systemImage: "folder",
-                    description: Text("organize your knowledge base into folders. when chatting you can pick which folder the agent uses as context.")
+                    description: Text("organize your knowledge base into folders. when chatting, pick which folder the agent uses as context.")
                 )
             } else {
-                ForEach(vm.folders) { folder in
-                    NavigationLink {
-                        KBFolderItemsView(folder: folder)
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder")
-                            Text(folder.name)
-                            if folder.isDefault {
-                                Text("default")
-                                    .font(.caption)
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .glassEffect(in: .capsule)
+                ScrollView {
+                    LazyVGrid(columns: columns, alignment: .center, spacing: 22) {
+                        ForEach(Array(vm.folders.enumerated()), id: \.element.id) { index, folder in
+                            let color = KnowledgeBaseFolder.color(at: index)
+                            NavigationLink {
+                                KBFolderItemsView(folder: folder, color: color)
+                            } label: {
+                                FolderTile(folder: folder, color: color)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                if !folder.isDefault {
+                                    Button {
+                                        Task { await vm.setDefault(folder) }
+                                    } label: { Label("set default", systemImage: "star") }
+                                }
+                                Button(role: .destructive) {
+                                    Task { await vm.delete(folder) }
+                                } label: { Label("delete", systemImage: "trash") }
                             }
                         }
                     }
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            Task { await vm.delete(folder) }
-                        } label: { Label("delete", systemImage: "trash") }
-                        if !folder.isDefault {
-                            Button {
-                                Task { await vm.setDefault(folder) }
-                            } label: { Label("default", systemImage: "star") }
-                            .tint(.yellow)
-                        }
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
                 }
+            }
+            if let error = vm.error {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 20)
             }
         }
         .navigationTitle("knowledge base")
@@ -61,6 +72,70 @@ struct KBFoldersView: View {
         }
         .task { await vm.load() }
     }
+}
+
+struct FolderTile: View {
+    let folder: KnowledgeBaseFolder
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 8) {
+            FolderGlyph(color: color, isDefault: folder.isDefault)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1.05, contentMode: .fit)
+
+            Text(folder.name)
+                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+}
+
+/// SF Symbol-based folder glyph. Uses the native filled folder shape so it
+/// reads as a folder, not a widget. Tinted per-folder for visual variety.
+struct FolderGlyph: View {
+    let color: Color
+    var isDefault: Bool = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "folder.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(color.gradient)
+                .shadow(color: color.opacity(0.25), radius: 6, x: 0, y: 4)
+
+            if isDefault {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(5)
+                    .background(Circle().fill(Color.yellow))
+                    .offset(x: 4, y: -2)
+            }
+        }
+    }
+}
+
+extension KnowledgeBaseFolder {
+    /// Cycle through the palette by position so adjacent folders never collide.
+    /// No DB column needed.
+    static func color(at index: Int) -> Color {
+        palette[((index % palette.count) + palette.count) % palette.count]
+    }
+
+    private static let palette: [Color] = [
+        Color(red: 0.20, green: 0.55, blue: 0.95),  // blue
+        Color(red: 0.95, green: 0.65, blue: 0.20),  // amber
+        Color(red: 0.85, green: 0.30, blue: 0.55),  // pink
+        Color(red: 0.30, green: 0.75, blue: 0.55),  // mint
+        Color(red: 0.60, green: 0.40, blue: 0.90),  // purple
+        Color(red: 0.95, green: 0.45, blue: 0.35),  // coral
+        Color(red: 0.20, green: 0.75, blue: 0.85),  // teal
+    ]
 }
 
 @MainActor
@@ -84,8 +159,11 @@ final class KBFoldersViewModel: ObservableObject {
     }
 
     func create(name: String) async {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, let userId = supabase.currentUserId else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 80, let userId = supabase.currentUserId else {
+            error = "folder name must be 1-80 characters"
+            return
+        }
         do {
             struct New: Encodable {
                 let user_id: String
@@ -140,6 +218,7 @@ final class KBFoldersViewModel: ObservableObject {
 
 struct KBFolderItemsView: View {
     let folder: KnowledgeBaseFolder
+    var color: Color = .accentColor
     @StateObject private var vm = KBFolderItemsViewModel()
     @State private var photoSelection: [PhotosPickerItem_Wrapper] = []
 
@@ -154,7 +233,7 @@ struct KBFolderItemsView: View {
             } else {
                 ForEach(vm.items) { item in
                     HStack {
-                        Image(systemName: "doc.fill").foregroundStyle(.tint)
+                        Image(systemName: "doc.fill").foregroundStyle(color)
                         Text(item.filename).lineLimit(1)
                         Spacer()
                         Text(item.createdAt, style: .date)
